@@ -10,14 +10,15 @@ using std::string;
 class trajDB
 {
 public:
-	map<int, STTraj> data;
+	vector<STTraj> data;
 	vector<Cell> gridIndex;
 	map<int, string> wordDict;
 	string fileName;
 
 	trajDB();
+	int loadDictFromFile(string fileName);
 	int loadTrajFromFile(string fileName);
-	int buildWordDict();
+	//int buildWordDict();
 
 	~trajDB();
 };
