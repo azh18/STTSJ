@@ -5,12 +5,14 @@
 
 using std::vector;
 using std::set;
+using std::map;
 class Cell
 {
 public:
 	MBR bound;
 	int cellid;
-	set<int> trajList;
+	set<int> trajList;// pre for expand
+	map<int, int> trajPointNumList; // map: traid->num
 
 	Cell();
 	Cell(int id);

@@ -1,16 +1,16 @@
 #include "STPoint.h"
 
-STPoint::STPoint(double x, double y, std::vector<int> keywords)
+STPoint::STPoint(double lat, double lon, std::vector<int> keywords)
 {
-	this->x = x;
-	this->y = y;
+	this->lat = lat;
+	this->lon = lon;
 	this->keywords = keywords;
 }
 
 STPoint::STPoint()
 {
-	this->x = 0;
-	this->y = 0;
+	this->lat = 0;
+	this->lon = 0;
 }
 
 int STPoint::getKeywordSize()

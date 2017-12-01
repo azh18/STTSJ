@@ -71,6 +71,52 @@ int trajDB::loadTrajFromFile(string fileName)
 	return this->data.size();
 }
 
+int trajDB::cleanOutsideData()
+{
+	for (size_t i = 0; i < this->data.size(); i++) {
+		for (vector<STPoint>::iterator iter = this->data[i].points.begin(); iter!=this->data[i].points.end();) {
+			if (this->allDataMBR.containPoint(*iter))
+				iter++;
+			else
+				iter = this->data[i].points.erase(iter);
+		}
+	}
+	return 0;
+}
+
+int trajDB::buildGridIndex(double resl_lat, double resl_lon)
+{
+	// generate Grid using Grid()
+	this->gridIndex.initial(this->allDataMBR, resl_lat, resl_lon);
+	// insert each traj into Grid
+	for (size_t i = 0; i < this->data.size(); i++) {
+		this->gridIndex.addTrajIntoGrid(this->data[i]);
+	}
+	// return success traj num
+	return 0;
+}
+
+int trajDB::getAllPointNum()
+{
+	int totalNum = 0;
+	for (size_t i = 0; i < this->data.size(); i++) {
+		totalNum += this->data[i].points.size();
+	}
+	return totalNum;
+}
+
+MBR trajDB::getMBRofAllData()
+{
+	//double minx=200, miny=200, maxx=-200, maxy=-200;
+	//for (size_t i = 0; i < this->data.size(); i++) {
+	//	for (size_t j = 0; j < this->data[i].points.size(); j++) {
+	//		j = 0;
+	//	}
+	//}
+	this->allDataMBR = MBR(39.0, 42.0, -76.0, -72.0);
+	return MBR(39.0, 42.0, -76.0, -72.0);
+}
+
 
 trajDB::~trajDB()
 {

@@ -3,6 +3,7 @@
 #include "STTraj.h"
 #include "gpuKernel.h"
 #include "Cell.h"
+#include "Grid.h"
 
 using std::vector;
 using std::map;
@@ -11,14 +12,19 @@ class trajDB
 {
 public:
 	vector<STTraj> data;
-	vector<Cell> gridIndex;
+	Grid gridIndex;
 	map<int, string> wordDict;
 	string fileName;
+	MBR allDataMBR;
 
 	trajDB();
 	int loadDictFromFile(string fileName);
 	int loadTrajFromFile(string fileName);
-	//int buildWordDict();
+	int cleanOutsideData();
+	int buildGridIndex(double resl_lat, double resl_lon);
+	int getAllPointNum();
+
+	MBR getMBRofAllData();
 
 	~trajDB();
 };
