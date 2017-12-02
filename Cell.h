@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include "GlobalHeader.h"
 #include "MBR.h"
 #include "STTraj.h"
@@ -11,14 +11,14 @@ class Cell
 public:
 	MBR bound;
 	int cellid;
-	set<int> trajList;// pre for expand
-	map<int, int> trajPointNumList; // map: traid->num
-
+	set<size_t> trajList;// pre for expand
+	map<size_t, int> trajPointNumList; // map: traid->num
+	 
 	Cell();
 	Cell(int id);
 	int isOverlap(MBR mbr);
-	int insertTraj(STTraj traj);
-	int getTrajNum();
+	size_t insertTraj(STTraj traj);
+	size_t getTrajNum();
 	~Cell();
 };
 

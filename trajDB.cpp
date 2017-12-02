@@ -10,7 +10,7 @@ trajDB::trajDB()
 {
 }
 
-int trajDB::loadDictFromFile(string fileName)
+size_t trajDB::loadDictFromFile(string fileName)
 {
 	ifstream inputStream(fileName, std::ios_base::in);
 	string buffer;
@@ -27,7 +27,7 @@ int trajDB::loadDictFromFile(string fileName)
 	return wordDict.size();
 }
 
-int trajDB::loadTrajFromFile(string fileName)
+size_t trajDB::loadTrajFromFile(string fileName)
 {
 	this->fileName = fileName;
 	ifstream trajFS(fileName, std::ios_base::in);
@@ -96,13 +96,19 @@ int trajDB::buildGridIndex(double resl_lat, double resl_lon)
 	return 0;
 }
 
-int trajDB::getAllPointNum()
+size_t trajDB::getAllPointNum()
 {
-	int totalNum = 0;
+	size_t totalNum = 0;
 	for (size_t i = 0; i < this->data.size(); i++) {
 		totalNum += this->data[i].points.size();
 	}
 	return totalNum;
+}
+
+int trajDB::runDefaultTest(double epsilon, double alpha, int setSize1, int setSize2)
+{
+	test.defaultTest(epsilon, alpha, setSize1, setSize2);
+	return 0;
 }
 
 MBR trajDB::getMBRofAllData()
@@ -116,6 +122,8 @@ MBR trajDB::getMBRofAllData()
 	this->allDataMBR = MBR(39.0, 42.0, -76.0, -72.0);
 	return MBR(39.0, 42.0, -76.0, -72.0);
 }
+
+
 
 
 trajDB::~trajDB()

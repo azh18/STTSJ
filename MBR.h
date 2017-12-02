@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include "GlobalHeader.h"
 #include "STPoint.h"
 class MBR
@@ -12,4 +12,4 @@ public:
 	int containPoint(STPoint &p);
 	~MBR();
 };
-
+ 

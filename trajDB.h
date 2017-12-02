@@ -4,6 +4,7 @@
 #include "gpuKernel.h"
 #include "Cell.h"
 #include "Grid.h"
+#include "JoinTest.h"
 
 using std::vector;
 using std::map;
@@ -16,15 +17,19 @@ public:
 	map<int, string> wordDict;
 	string fileName;
 	MBR allDataMBR;
+	JoinTest test;
 
 	trajDB();
-	int loadDictFromFile(string fileName);
-	int loadTrajFromFile(string fileName);
+	size_t loadDictFromFile(string fileName);
+	size_t loadTrajFromFile(string fileName);
 	int cleanOutsideData();
 	int buildGridIndex(double resl_lat, double resl_lon);
-	int getAllPointNum();
+	size_t getAllPointNum();
+	int runDefaultTest(double epsilon, double alpha, int setSize1, int setSize2);
 
 	MBR getMBRofAllData();
+
+
 
 	~trajDB();
 };

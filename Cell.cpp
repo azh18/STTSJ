@@ -16,7 +16,7 @@ int Cell::isOverlap(MBR mbr)
 	return bound.isOverlap(mbr);
 }
 
-int Cell::insertTraj(STTraj traj)
+size_t Cell::insertTraj(STTraj traj)
 {
 	trajList.insert(traj.trajID);
 	if (this->trajPointNumList.find(traj.trajID) == this->trajPointNumList.end())
@@ -26,7 +26,7 @@ int Cell::insertTraj(STTraj traj)
 	return this->trajList.size();
 }
 
-int Cell::getTrajNum()
+size_t Cell::getTrajNum()
 {
 	return trajList.size();
 }

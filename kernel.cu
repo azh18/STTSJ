@@ -1,17 +1,98 @@
-
+﻿
 #include "cuda_runtime.h"
 #include "device_launch_parameters.h"
+#include "gpuKernel.h"
 
 #include <stdio.h>
 
+typedef struct GPUHausInfoTable {
+	size_t *keywordNumP, *keywordNumQ; // #keywords in each point
+	size_t taskNumP, taskNumQ; // #traj in each set
+	size_t *pointNumP, *pointNumQ; // #points in each traj
+};
+
 cudaError_t addWithCuda(int *c, const int *a, const int *b, unsigned int size);
+
+size_t calculateDatasize_TrajSet(vector<STTraj> &trajSet) {
+	size_t datasize = 0;
+	for (vector<STTraj>::iterator it = trajSet.begin(); it != trajSet.end(); it++) {
+		for (vector<STPoint>::iterator itp = it->points.begin(); itp != it->points.end(); itp++) {
+			datasize += (2 * sizeof(double) + (itp->keywords.size()) * sizeof(int));
+		}
+	}
+	return datasize;
+}
+
+// return the bytes copied, from pStart
+// numKeywords: #keywords of each point
+size_t copySTTrajToArray(STTraj &traj, char* pStart, size_t *numKeywords) {
+	vector<STPoint>::iterator itp;
+	size_t ptCnt = 0;
+	char *s = pStart;
+	for (itp = traj.points.begin(); itp != traj.points.end(); itp++) {
+		numKeywords[ptCnt++] = itp->keywords.size();
+		memcpy(pStart, &itp->lat, sizeof(double));
+		pStart += sizeof(double);
+		memcpy(pStart, &itp->lon, sizeof(double));
+		pStart += sizeof(double);
+		for (vector<int>::iterator itk = itp->keywords.begin(); itk != itp->keywords.end(); itk++) {
+			memcpy(pStart, &(*itk), sizeof(int));
+			pStart += sizeof(int);
+		}
+	}
+	return (pStart - s);
+}
+
+
+int calculateDistanceGPU(vector<STTraj> trajSetP,
+	vector<STTraj> trajSetQ,
+	map<trajPair, double> &result) {
+	char *dataSetP, *dataSetQ;
+	size_t dataSizeP = 0, dataSizeQ = 0;
+	// 所有点线性排列
+	dataSizeP = calculateDatasize_TrajSet(trajSetP);
+	dataSizeQ = calculateDatasize_TrajSet(trajSetQ);
+	dataSetP = (char*)malloc(dataSizeP);
+	dataSetQ = (char*)malloc(dataSizeQ);
+	GPUHausInfoTable hausTaskInfo;
+	
+
+	vector<size_t> pointNumPCPU, pointNumQCPU,keywordNumPCPU, keywordNumQCPU;
+
+	char *p = dataSetP, *q = dataSetQ;
+	size_t copiedDataSize = 0;
+	size_t keywordNum[1000];
+	for (vector<STTraj>::iterator it = trajSetP.begin(); it != trajSetP.end(); it++) {
+		copiedDataSize = copySTTrajToArray(*it, p, keywordNum);
+		for (int i = 0; i < it->points.size(); i++) {
+			keywordNumPCPU.push_back(keywordNum[i]);
+		}
+		pointNumPCPU.push_back(it->points.size());
+		p = p + copiedDataSize;
+	}
+	for (vector<STTraj>::iterator it = trajSetQ.begin(); it != trajSetQ.end(); it++) {
+		copiedDataSize = copySTTrajToArray(*it, q, keywordNum);
+		for (int i = 0; i < it->points.size(); i++) {
+			keywordNumQCPU.push_back(keywordNum[i]);
+		}
+		pointNumQCPU.push_back(it->points.size());
+		q = q + copiedDataSize;
+	}
+
+	return 0;
+
+
+
+
+}
+
 
 __global__ void addKernel(int *c, const int *a, const int *b)
 {
     int i = threadIdx.x;
     c[i] = a[i] + b[i];
 }
-
+ 
 /*
 int main()
 {
