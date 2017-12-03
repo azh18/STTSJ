@@ -2,16 +2,80 @@
 #include "cuda_runtime.h"
 #include "device_launch_parameters.h"
 #include "gpuKernel.h"
-
+#include <assert.h>
 #include <stdio.h>
+#include "GlobalHeader.h"
 
+
+#define CUDA_CALL(x) { const cudaError_t a = (x); if (a!= cudaSuccess) { printf("\nCUDA Error: %s(err_num=%d)\n", cudaGetErrorString(a), a); cudaDeviceReset(); assert(0);}}
+// every task of GPU has a GPUHausInfoTable
 typedef struct GPUHausInfoTable {
-	size_t *keywordNumP, *keywordNumQ; // #keywords in each point
-	size_t taskNumP, taskNumQ; // #traj in each set
-	size_t *pointNumP, *pointNumQ; // #points in each traj
-};
+	uint32_t latlonIdxP, latlonIdxQ; // the first offset of latlon of the traj 
+	// size_t textIdxP, textIdxQ; //the first offset of text of the traj 
+	uint32_t pointNumP, pointNumQ; // # point in each traj
+	// uint32_t idxInTextIdxP, idxInTextIdxQ; //not need, because is same as latlonIdx// idx of first point in textIdx, from this to derive the range of keywords of each point
+}GPUHashInfoTable;
+
+typedef struct Latlon {
+	double lat;
+	double lon;
+}Latlon;
 
 cudaError_t addWithCuda(int *c, const int *a, const int *b, unsigned int size);
+
+/*
+GPU function definition.
+All functions of GPU are defined here.
+
+*/
+__global__ void addKernel(int *c, const int *a, const int *b)
+{
+	int i = threadIdx.x;
+	c[i] = a[i] + b[i];
+}
+
+__device__ inline double SDistance(double lat1, double lat2, double lon1, double lon2) {
+	double latdelta = lat1 - lat2;
+	double londelta = lon1 - lon2;
+	return sqrt(latdelta*latdelta + londelta*londelta);
+}
+
+__device__ inline double TDistance(int* word1, int* word2, uint16_t wordNum1, uint16_t wordNum2) {
+	return;
+}
+
+__global__ void computeHausdorffDistanceByGPU(Latlon* latlonP, int* textP, uint32_t* textIdxPArray,
+	Latlon* latlonQ, int* textQ, uint32_t* textIdxQArray, int datasizeP, int datasizeQ, 
+	uint16_t *wordNumP, uint16_t *wordNumQ, GPUHausInfoTable* taskInfo) {
+	int bID = blockIdx.x;
+	int tID = threadIdx.x;
+	GPUHashInfoTable task = taskInfo[bID];
+	uint32_t pointIdxP = task.latlonIdxP;
+	uint32_t pointNumP = task.pointNumP;
+	uint32_t pointIdxQ = task.latlonIdxQ;
+	uint32_t pointNumQ = task.pointNumQ;
+	// for each thread, get addr and compute distance
+	double latP = latlonP[pointIdxP + tID / datasizeQ].lat;
+	double lonP = latlonP[pointIdxP + tID / datasizeQ].lon;
+	uint32_t textStartIdxP = textIdxPArray[pointIdxP + tID / datasizeQ];
+	uint16_t keywordNumP = wordNumP[pointIdxP + tID / datasizeQ];
+	int keywordP[MAX_KEYWORD_NUM], keywordQ[MAX_KEYWORD_NUM];
+	double latQ = latlonQ[pointIdxQ + tID % datasizeQ].lat;
+	double lonQ = latlonQ[pointIdxQ + tID % datasizeQ].lon;
+	uint32_t textStartIdxQ = textIdxQArray[pointIdxQ + tID % datasizeQ];
+	uint16_t keywordNumQ = wordNumQ[pointIdxQ + tID % datasizeQ];
+	__shared__ double distancePt1[THREAD_NUM], distancePt2[THREAD_NUM];
+
+
+
+	// 
+}
+
+/*
+CPU function definition.
+All functions of CPU are defined here.
+
+*/
 
 size_t calculateDatasize_TrajSet(vector<STTraj> &trajSet) {
 	size_t datasize = 0;
@@ -43,55 +107,119 @@ size_t copySTTrajToArray(STTraj &traj, char* pStart, size_t *numKeywords) {
 	return (pStart - s);
 }
 
+void* GPUMalloc(size_t byteNum) {
+	void *addr;
+	CUDA_CALL(cudaMalloc(&addr, byteNum));
+	return addr;
+}
 
-int calculateDistanceGPU(vector<STTraj> trajSetP,
-	vector<STTraj> trajSetQ,
-	map<trajPair, double> &result) {
-	char *dataSetP, *dataSetQ;
-	size_t dataSizeP = 0, dataSizeQ = 0;
+
+int calculateDistanceGPU(const vector<STTraj> &trajSetP,
+	const vector<STTraj> &trajSetQ,
+	map<trajPair, double> &result,
+	void* baseGPUAddr, cudaStream_t &stream) {
+	// Latlon *latlonDataPCPU, *latlonDataQCPU; // latlon array
+	// int *textDataPCPU, *textDataQCPU; 
+	vector<int> textDataPCPU, textDataQCPU; // keyword array
+	vector<uint32_t> textIdxPCPU, textIdxQCPU; // keyword idx for each point (to locate the where and how many keywords for a point)
+	vector<uint16_t> numWordPCPU, numWordQCPU; // keyword num in each point
+	size_t dataSizeP = trajSetP.size(), dataSizeQ = trajSetQ.size();
 	// 所有点线性排列
-	dataSizeP = calculateDatasize_TrajSet(trajSetP);
-	dataSizeQ = calculateDatasize_TrajSet(trajSetQ);
-	dataSetP = (char*)malloc(dataSizeP);
-	dataSetQ = (char*)malloc(dataSizeQ);
-	GPUHausInfoTable hausTaskInfo;
-	
+	vector<Latlon> latlonDataPCPU, latlonDataQCPU;
+	GPUHausInfoTable *hausTaskInfoCPU = (GPUHashInfoTable*)malloc(sizeof(GPUHashInfoTable)*dataSizeP*dataSizeQ);
 
-	vector<size_t> pointNumPCPU, pointNumQCPU,keywordNumPCPU, keywordNumQCPU;
+	//Latlon *latlon = latlonDataPCPU;
+	//size_t keywordNum[1000];
+	uint32_t pointCnt = 0, textIdxCnt = 0, textCnt = 0;
+	// process set P
+	for (size_t i = 0; i < trajSetP.size(); i++) {
+		//update table for P[i][]
+		for (size_t j = i*dataSizeQ; j < (i+1)*dataSizeQ; j++) {
+			hausTaskInfoCPU[j].pointNumP = (uint32_t)trajSetP[i].points.size();
+			hausTaskInfoCPU[j].latlonIdxP = pointCnt;
+		}
+		//insert data and update idx
+		for (size_t j = 0; j < trajSetP[i].points.size(); j++) {
+			Latlon p;
+			p.lat = trajSetP[i].points[j].lat;
+			p.lon = trajSetP[i].points[j].lon;
+			latlonDataPCPU.push_back(p);
+			numWordPCPU.push_back((uint16_t)trajSetP[i].points[j].keywords.size());
+			pointCnt++;
+			textIdxPCPU.push_back(textCnt);
+			for (size_t k = 0; k < trajSetP[i].points[j].keywords.size(); k++) {
+				textDataPCPU.push_back(trajSetP[i].points[j].keywords[k]);
+				textCnt++;
+			}
+		}
+	}
+	void* latlonDataPGPU, *latlonDataQGPU, *textDataPGPU, *textDataQGPU, *textIdxPGPU, *textIdxQGPU, *numWordPGPU, *numWordQGPU;
+	void *pNow = baseGPUAddr;
+	// Copy data of P to GPU
+	CUDA_CALL(cudaMemcpyAsync(pNow, &latlonDataPCPU[0], sizeof(Latlon)*latlonDataPCPU.size(), cudaMemcpyHostToDevice, stream));
+	latlonDataPGPU = pNow;
+	pNow = (void*)((char*)pNow + sizeof(Latlon)*latlonDataPCPU.size());
+	CUDA_CALL(cudaMemcpyAsync(pNow, &textDataPCPU[0], sizeof(int)*textDataPCPU.size(), cudaMemcpyHostToDevice, stream));
+	textDataPGPU = pNow;
+	pNow = (void*)((char*)pNow + sizeof(int)*textDataPCPU.size());
+	CUDA_CALL(cudaMemcpyAsync(pNow, &textIdxPCPU[0], sizeof(uint32_t)*textIdxPCPU.size(), cudaMemcpyHostToDevice, stream));
+	textIdxPGPU = pNow;
+	pNow = (void*)((char*)pNow + sizeof(uint32_t)*textIdxPCPU.size());
+	CUDA_CALL(cudaMemcpyAsync(pNow, &numWordPCPU[0], sizeof(uint16_t)*numWordPCPU.size(), cudaMemcpyHostToDevice, stream));
+	numWordPGPU = pNow;
+	pNow = (void*)((char*)pNow + sizeof(uint16_t)*numWordPCPU.size());
 
-	char *p = dataSetP, *q = dataSetQ;
-	size_t copiedDataSize = 0;
-	size_t keywordNum[1000];
-	for (vector<STTraj>::iterator it = trajSetP.begin(); it != trajSetP.end(); it++) {
-		copiedDataSize = copySTTrajToArray(*it, p, keywordNum);
-		for (int i = 0; i < it->points.size(); i++) {
-			keywordNumPCPU.push_back(keywordNum[i]);
+	// process set Q
+	pointCnt = 0; textCnt = 0;
+	for (size_t i = 0; i < trajSetQ.size(); i++) {
+		//update table for Q[][i]
+		for (size_t j = i; j < i + dataSizeP*dataSizeQ; j+=dataSizeP) {
+			hausTaskInfoCPU[j].pointNumQ = (uint32_t)trajSetQ[i].points.size();
+			hausTaskInfoCPU[j].latlonIdxQ = pointCnt;
 		}
-		pointNumPCPU.push_back(it->points.size());
-		p = p + copiedDataSize;
-	}
-	for (vector<STTraj>::iterator it = trajSetQ.begin(); it != trajSetQ.end(); it++) {
-		copiedDataSize = copySTTrajToArray(*it, q, keywordNum);
-		for (int i = 0; i < it->points.size(); i++) {
-			keywordNumQCPU.push_back(keywordNum[i]);
+		//insert data and update idx
+		for (size_t j = 0; j < trajSetQ[i].points.size(); j++) {
+			Latlon p;
+			p.lat = trajSetQ[i].points[j].lat;
+			p.lon = trajSetQ[i].points[j].lon;
+			latlonDataQCPU.push_back(p);
+			numWordQCPU.push_back((uint16_t)trajSetQ[i].points[j].keywords.size());
+			pointCnt++;
+			textIdxQCPU.push_back(textCnt);
+			for (size_t k = 0; k < trajSetQ[i].points[j].keywords.size(); k++) {
+				textDataQCPU.push_back(trajSetQ[i].points[j].keywords[k]);
+				textCnt++;
+			}
 		}
-		pointNumQCPU.push_back(it->points.size());
-		q = q + copiedDataSize;
 	}
+	// cpu data build finished
+	// transfer data to GPU
+	// Copy data of P to GPU
+	CUDA_CALL(cudaMemcpyAsync(pNow, &latlonDataQCPU[0], sizeof(Latlon)*latlonDataQCPU.size(), cudaMemcpyHostToDevice, stream));
+	latlonDataQGPU = pNow;
+	pNow = (void*)((char*)pNow + sizeof(Latlon)*latlonDataQCPU.size());
+	CUDA_CALL(cudaMemcpyAsync(pNow, &textDataQCPU[0], sizeof(int)*textDataQCPU.size(), cudaMemcpyHostToDevice, stream));
+	textDataQGPU = pNow;
+	pNow = (void*)((char*)pNow + sizeof(int)*textDataQCPU.size());
+	CUDA_CALL(cudaMemcpyAsync(pNow, &textIdxQCPU[0], sizeof(uint32_t)*textIdxQCPU.size(), cudaMemcpyHostToDevice, stream));
+	textIdxQGPU = pNow;
+	pNow = (void*)((char*)pNow + sizeof(uint32_t)*textIdxQCPU.size());
+	CUDA_CALL(cudaMemcpyAsync(pNow, &numWordQCPU[0], sizeof(uint16_t)*numWordQCPU.size(), cudaMemcpyHostToDevice, stream));
+	numWordQGPU = pNow;
+	pNow = (void*)((char*)pNow + sizeof(uint16_t)*numWordQCPU.size());
+
+	void *taskinfoTable;
+	CUDA_CALL(cudaMemcpyAsync(pNow, hausTaskInfoCPU, sizeof(GPUHashInfoTable)*dataSizeP*dataSizeQ, cudaMemcpyHostToDevice, stream));
+	taskinfoTable = pNow;
+	pNow = (void*)((char*)pNow + sizeof(GPUHashInfoTable)*dataSizeP*dataSizeQ);
+	// data copy finish, invoke kernel
+	double *distanceResult = new double[dataSizeP*dataSizeQ];
 
 	return 0;
-
-
-
-
 }
 
 
-__global__ void addKernel(int *c, const int *a, const int *b)
-{
-    int i = threadIdx.x;
-    c[i] = a[i] + b[i];
-}
+
  
 /*
 int main()
@@ -124,6 +252,7 @@ int main()
 */
 
 // Helper function for using CUDA to add vectors in parallel.
+/*
 cudaError_t addWithCuda(int *c, const int *a, const int *b, unsigned int size)
 {
     int *dev_a = 0;
@@ -202,3 +331,4 @@ Error:
     
     return cudaStatus;
 }
+*/

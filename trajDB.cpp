@@ -1,6 +1,7 @@
 #include "trajDB.h"
 #include<fstream>
 #include<sstream>
+#include "gpuKernel.h"
 using std::stringstream;
 using std::ifstream;
 using std::istreambuf_iterator;
@@ -107,7 +108,21 @@ size_t trajDB::getAllPointNum()
 
 int trajDB::runDefaultTest(double epsilon, double alpha, int setSize1, int setSize2)
 {
-	test.defaultTest(epsilon, alpha, setSize1, setSize2);
+	// test exhausted join on CPU
+	// test.defaultTest(epsilon, alpha, setSize1, setSize2);
+
+	// test exhausted join on GPU
+	JoinTest testExhaustGPU;
+	testExhaustGPU.init(&this->data, &this->gridIndex);
+	map<trajPair, double> testResult;
+	vector<int> joinsetP, joinsetQ;
+	for (int i = 0; i < setSize1; i++)
+		joinsetP.push_back(i);
+	for (int i = 0; i < setSize2; i++)
+		joinsetQ.push_back(i);
+	testExhaustGPU.joinExhaustedGPU(epsilon, alpha, joinsetP, joinsetQ, testResult);
+	// map<trajPair, double> tt;
+	// calculateDistanceGPU((this->data), (this->data), tt);
 	return 0;
 }
 
