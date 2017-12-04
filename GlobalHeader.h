@@ -45,6 +45,7 @@ public:
 
 #define MAX_DIST 6.0 //空间距离的归一化参数
 #define MAX_KEYWORD_NUM 200 //每个点包含keyword的最大值
+#define MAX_TRAJ_LENGTH 200
 #define THREAD_NUM 256
 
 typedef std::pair<size_t, size_t> trajPair;

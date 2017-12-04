@@ -22,6 +22,10 @@ typedef struct Latlon {
 }Latlon;
 
 cudaError_t addWithCuda(int *c, const int *a, const int *b, unsigned int size);
+void CUDAwarmUp() {
+	CUDA_CALL(cudaSetDeviceFlags(cudaDeviceMapHost));
+	CUDA_CALL(cudaSetDevice(0));
+}
 
 /*
 GPU function definition.
@@ -34,19 +38,39 @@ __global__ void addKernel(int *c, const int *a, const int *b)
 	c[i] = a[i] + b[i];
 }
 
-__device__ inline double SDistance(double lat1, double lat2, double lon1, double lon2) {
+__device__ inline double SDistance(double lat1, double lon1, double lat2, double lon2) {
 	double latdelta = lat1 - lat2;
 	double londelta = lon1 - lon2;
-	return sqrt(latdelta*latdelta + londelta*londelta);
+	return sqrt(latdelta*latdelta + londelta*londelta)/ MAX_DIST;
 }
 
-__device__ inline double TDistance(int* word1, int* word2, uint16_t wordNum1, uint16_t wordNum2) {
-	return;
+__device__ inline double TDistance(int* word1, int* word2, uint32_t wordNum1, uint32_t wordNum2) {
+	int tempWords[MAX_KEYWORD_NUM]; uint32_t intersect_size = 0, union_size = 0;
+	for (uint32_t idxW = 0; idxW < wordNum1; idxW++) {
+		tempWords[idxW] = word1[idxW];
+		union_size++;
+	}
+	for (uint32_t idxW = 0; idxW < wordNum2; idxW++) {
+		bool haveSame = false;
+		for (uint32_t idxW1 = 0; idxW1 < wordNum1; idxW1++) {
+			if (tempWords[idxW1] == word2[idxW]) {
+				// intersect_size++;
+				haveSame = true;
+				break;
+			}
+		}
+		if (haveSame)
+			intersect_size++;
+		else
+			union_size++;
+	}
+	return 1.0 - (double)intersect_size / union_size;
 }
 
 __global__ void computeHausdorffDistanceByGPU(Latlon* latlonP, int* textP, uint32_t* textIdxPArray,
 	Latlon* latlonQ, int* textQ, uint32_t* textIdxQArray, int datasizeP, int datasizeQ, 
-	uint16_t *wordNumP, uint16_t *wordNumQ, GPUHausInfoTable* taskInfo) {
+	uint32_t *wordNumP, uint32_t *wordNumQ, GPUHausInfoTable* taskInfo, double alpha,
+	double *HausdorffResult) {
 	int bID = blockIdx.x;
 	int tID = threadIdx.x;
 	GPUHashInfoTable task = taskInfo[bID];
@@ -55,20 +79,114 @@ __global__ void computeHausdorffDistanceByGPU(Latlon* latlonP, int* textP, uint3
 	uint32_t pointIdxQ = task.latlonIdxQ;
 	uint32_t pointNumQ = task.pointNumQ;
 	// for each thread, get addr and compute distance
-	double latP = latlonP[pointIdxP + tID / datasizeQ].lat;
-	double lonP = latlonP[pointIdxP + tID / datasizeQ].lon;
-	uint32_t textStartIdxP = textIdxPArray[pointIdxP + tID / datasizeQ];
-	uint16_t keywordNumP = wordNumP[pointIdxP + tID / datasizeQ];
-	int keywordP[MAX_KEYWORD_NUM], keywordQ[MAX_KEYWORD_NUM];
-	double latQ = latlonQ[pointIdxQ + tID % datasizeQ].lat;
-	double lonQ = latlonQ[pointIdxQ + tID % datasizeQ].lon;
-	uint32_t textStartIdxQ = textIdxQArray[pointIdxQ + tID % datasizeQ];
-	uint16_t keywordNumQ = wordNumQ[pointIdxQ + tID % datasizeQ];
-	__shared__ double distancePt1[THREAD_NUM], distancePt2[THREAD_NUM];
+	// if traj length is larger than 16, use for loop to process
+	__shared__ double tempDist[THREAD_NUM];
+	__shared__ double minimunDist[MAX_TRAJ_LENGTH+2]; // one more is because easy to reduce maximum
+	__shared__ double maxDist1;
 
+	if (tID < pointNumP)
+		minimunDist[tID] = 9999.0;
+	else if (tID < MAX_TRAJ_LENGTH + 2)
+		minimunDist[tID] = -1.0;	
+	double latP, latQ, lonP, lonQ;
+	uint32_t textStartIdxP, textStartIdxQ;
+	uint32_t keywordNumP, keywordNumQ;
+	for (int i = 0; i < pointNumP; i += 16) {
+		if (tID / 16 + i < pointNumP) {
+			latP = latlonP[pointIdxP + tID / 16 + i].lat;
+			lonP = latlonP[pointIdxP + tID / 16 + i].lon;
+			textStartIdxP = textIdxPArray[pointIdxP + tID / 16 + i];
+			keywordNumP = wordNumP[pointIdxP + tID / 16 + i];
+		}
+		for (int j = 0; j < pointNumQ; j += 16) {
+			// tID / 16 + i < pointNumP 条件可否去掉？
+			if (tID / 16 + i < pointNumP && tID % 16 + j < pointNumQ) {
+				latQ = latlonQ[pointIdxQ + tID % 16 + j].lat;
+				lonQ = latlonQ[pointIdxQ + tID % 16 + j].lon;
+				textStartIdxQ = textIdxQArray[pointIdxQ + tID % 16 + j];
+				keywordNumQ = wordNumQ[pointIdxQ + tID % 16 + j];
+				// calculate distance
+				double TDist = TDistance(&textP[textStartIdxP], &textQ[textStartIdxQ], keywordNumP, keywordNumQ);
+				double SDist = SDistance(latQ, lonQ, latP, lonP);
+				// dist = S*alpha + T*(1-alpha)
+				tempDist[tID] = SDist * alpha + TDist * (1 - alpha);
+			}
+			// compute minimum, loop (may optimize to reduce)
+			// only use a warp
+			__syncthreads();
+			double minDist = 99999;
+			if (tID / 16 == 0 && (tID % 16) < (pointNumP - i)) {
+				for (int k = 0; k + j < pointNumQ && k < 16; k++) {
+					if (tempDist[k + tID * 16] < minDist)
+						minDist = tempDist[k + tID * 16];
+				}
+				if (minimunDist[tID % 16 + i] > minDist)
+					minimunDist[tID % 16 + i] = minDist;
+			}
+			__syncthreads();
+		}
+	}
+	// 归并找最大值
+	for (int i = MAX_TRAJ_LENGTH/2+1; i >= 1; i = i >> 1) {
+		if (tID < i) {
+			minimunDist[tID] = minimunDist[tID] > minimunDist[tID + i] ? minimunDist[tID] : minimunDist[tID + i];
+		}
+	}
+	if (tID == 0)
+		maxDist1 = minimunDist[0];
 
+	// 计算q对p的距离
+	if (tID < pointNumQ)
+		minimunDist[tID] = 9999.0;
+	else if (tID < MAX_TRAJ_LENGTH + 2)
+		minimunDist[tID] = -1.0;
 
-	// 
+	for (int i = 0; i < pointNumQ; i += 16) {
+		if (tID / 16 + i < pointNumQ) {
+			latQ = latlonQ[pointIdxQ + tID / 16 + i].lat;
+			lonQ = latlonQ[pointIdxQ + tID / 16 + i].lon;
+			textStartIdxQ = textIdxQArray[pointIdxQ + tID / 16 + i];
+			keywordNumQ = wordNumQ[pointIdxQ + tID / 16 + i];
+		}
+		for (int j = 0; j < pointNumP; j += 16) {
+			// tID / 16 + i < pointNumQ 条件可否去掉？
+			if (tID / 16 + i < pointNumQ && tID % 16 + j < pointNumP) {
+				latP = latlonP[pointIdxP + tID % 16 + j].lat;
+				lonP = latlonP[pointIdxP + tID % 16 + j].lon;
+				textStartIdxP = textIdxPArray[pointIdxP + tID % 16 + j];
+				keywordNumP = wordNumP[pointIdxP + tID % 16 + j];
+				// calculate distance
+				double TDist = TDistance(&textQ[textStartIdxQ], &textP[textStartIdxP], keywordNumQ, keywordNumP);
+				double SDist = SDistance(latQ, lonQ, latP, lonP);
+				// dist = S*alpha + T*(1-alpha)
+				tempDist[tID] = SDist * alpha + TDist * (1 - alpha);
+			}
+			// compute minimum, loop (may optimize to reduce)
+			// only use a warp
+			__syncthreads();
+			double minDist = 99999;
+			if (tID / 16 == 0 && (tID % 16) < (pointNumQ - i)) {
+				for (int k = 0; k + j < pointNumP && k < 16; k++) {
+					if (tempDist[k + tID * 16] < minDist)
+						minDist = tempDist[k + tID * 16];
+				}
+				if (minimunDist[tID % 16 + i] > minDist)
+					minimunDist[tID % 16 + i] = minDist;
+			}
+			__syncthreads();
+		}
+	}
+	// 归并找最大值
+	for (int i = MAX_TRAJ_LENGTH / 2 + 1; i >= 1; i = i >> 1) {
+		if (tID < i) {
+			minimunDist[tID] = minimunDist[tID] > minimunDist[tID + i] ? minimunDist[tID] : minimunDist[tID + i];
+		}
+	}
+	if (tID == 0)
+	{
+		HausdorffResult[bID] = (minimunDist[0] > maxDist1 ? minimunDist[0] : maxDist1);
+	}
+	return;
 }
 
 /*
@@ -109,20 +227,20 @@ size_t copySTTrajToArray(STTraj &traj, char* pStart, size_t *numKeywords) {
 
 void* GPUMalloc(size_t byteNum) {
 	void *addr;
-	CUDA_CALL(cudaMalloc(&addr, byteNum));
+	CUDA_CALL(cudaMalloc((void**)&addr, byteNum));
 	return addr;
 }
 
 
-int calculateDistanceGPU(const vector<STTraj> &trajSetP,
-	const vector<STTraj> &trajSetQ,
+int calculateDistanceGPU(vector<STTraj> &trajSetP,
+	vector<STTraj> &trajSetQ,
 	map<trajPair, double> &result,
-	void* baseGPUAddr, cudaStream_t &stream) {
+	void* baseGPUAddr, double alpha, cudaStream_t &stream) {
 	// Latlon *latlonDataPCPU, *latlonDataQCPU; // latlon array
 	// int *textDataPCPU, *textDataQCPU; 
 	vector<int> textDataPCPU, textDataQCPU; // keyword array
 	vector<uint32_t> textIdxPCPU, textIdxQCPU; // keyword idx for each point (to locate the where and how many keywords for a point)
-	vector<uint16_t> numWordPCPU, numWordQCPU; // keyword num in each point
+	vector<uint32_t> numWordPCPU, numWordQCPU; // keyword num in each point
 	size_t dataSizeP = trajSetP.size(), dataSizeQ = trajSetQ.size();
 	// 所有点线性排列
 	vector<Latlon> latlonDataPCPU, latlonDataQCPU;
@@ -130,7 +248,7 @@ int calculateDistanceGPU(const vector<STTraj> &trajSetP,
 
 	//Latlon *latlon = latlonDataPCPU;
 	//size_t keywordNum[1000];
-	uint32_t pointCnt = 0, textIdxCnt = 0, textCnt = 0;
+	uint32_t pointCnt = 0,  textCnt = 0;
 	// process set P
 	for (size_t i = 0; i < trajSetP.size(); i++) {
 		//update table for P[i][]
@@ -144,7 +262,7 @@ int calculateDistanceGPU(const vector<STTraj> &trajSetP,
 			p.lat = trajSetP[i].points[j].lat;
 			p.lon = trajSetP[i].points[j].lon;
 			latlonDataPCPU.push_back(p);
-			numWordPCPU.push_back((uint16_t)trajSetP[i].points[j].keywords.size());
+			numWordPCPU.push_back((uint32_t)trajSetP[i].points[j].keywords.size());
 			pointCnt++;
 			textIdxPCPU.push_back(textCnt);
 			for (size_t k = 0; k < trajSetP[i].points[j].keywords.size(); k++) {
@@ -165,9 +283,9 @@ int calculateDistanceGPU(const vector<STTraj> &trajSetP,
 	CUDA_CALL(cudaMemcpyAsync(pNow, &textIdxPCPU[0], sizeof(uint32_t)*textIdxPCPU.size(), cudaMemcpyHostToDevice, stream));
 	textIdxPGPU = pNow;
 	pNow = (void*)((char*)pNow + sizeof(uint32_t)*textIdxPCPU.size());
-	CUDA_CALL(cudaMemcpyAsync(pNow, &numWordPCPU[0], sizeof(uint16_t)*numWordPCPU.size(), cudaMemcpyHostToDevice, stream));
+	CUDA_CALL(cudaMemcpyAsync(pNow, &numWordPCPU[0], sizeof(uint32_t)*numWordPCPU.size(), cudaMemcpyHostToDevice, stream));
 	numWordPGPU = pNow;
-	pNow = (void*)((char*)pNow + sizeof(uint16_t)*numWordPCPU.size());
+	pNow = (void*)((char*)pNow + sizeof(uint32_t)*numWordPCPU.size());
 
 	// process set Q
 	pointCnt = 0; textCnt = 0;
@@ -183,7 +301,7 @@ int calculateDistanceGPU(const vector<STTraj> &trajSetP,
 			p.lat = trajSetQ[i].points[j].lat;
 			p.lon = trajSetQ[i].points[j].lon;
 			latlonDataQCPU.push_back(p);
-			numWordQCPU.push_back((uint16_t)trajSetQ[i].points[j].keywords.size());
+			numWordQCPU.push_back((uint32_t)trajSetQ[i].points[j].keywords.size());
 			pointCnt++;
 			textIdxQCPU.push_back(textCnt);
 			for (size_t k = 0; k < trajSetQ[i].points[j].keywords.size(); k++) {
@@ -204,16 +322,34 @@ int calculateDistanceGPU(const vector<STTraj> &trajSetP,
 	CUDA_CALL(cudaMemcpyAsync(pNow, &textIdxQCPU[0], sizeof(uint32_t)*textIdxQCPU.size(), cudaMemcpyHostToDevice, stream));
 	textIdxQGPU = pNow;
 	pNow = (void*)((char*)pNow + sizeof(uint32_t)*textIdxQCPU.size());
-	CUDA_CALL(cudaMemcpyAsync(pNow, &numWordQCPU[0], sizeof(uint16_t)*numWordQCPU.size(), cudaMemcpyHostToDevice, stream));
+	CUDA_CALL(cudaMemcpyAsync(pNow, &numWordQCPU[0], sizeof(uint32_t)*numWordQCPU.size(), cudaMemcpyHostToDevice, stream));
 	numWordQGPU = pNow;
-	pNow = (void*)((char*)pNow + sizeof(uint16_t)*numWordQCPU.size());
+	pNow = (void*)((char*)pNow + sizeof(uint32_t)*numWordQCPU.size());
 
 	void *taskinfoTable;
 	CUDA_CALL(cudaMemcpyAsync(pNow, hausTaskInfoCPU, sizeof(GPUHashInfoTable)*dataSizeP*dataSizeQ, cudaMemcpyHostToDevice, stream));
 	taskinfoTable = pNow;
 	pNow = (void*)((char*)pNow + sizeof(GPUHashInfoTable)*dataSizeP*dataSizeQ);
 	// data copy finish, invoke kernel
-	double *distanceResult = new double[dataSizeP*dataSizeQ];
+	double *distanceResult,*distanceResultGPU;
+	CUDA_CALL(cudaHostAlloc((void**)&distanceResult, dataSizeP*dataSizeQ*sizeof(double), cudaHostAllocMapped));
+	CUDA_CALL(cudaHostGetDevicePointer((void**)&distanceResultGPU, distanceResult, 0));
+
+	computeHausdorffDistanceByGPU << <(uint32_t)dataSizeP*(uint32_t)dataSizeQ, THREAD_NUM, 0, stream >> > ((Latlon*)latlonDataPGPU, 
+		(int*)textDataPGPU, (uint32_t*)textIdxPGPU, (Latlon*)latlonDataQGPU, 
+		(int*)textDataQGPU, (uint32_t*)textIdxQGPU, 
+		(int)dataSizeP, (int)dataSizeQ,
+		(uint32_t*)numWordPGPU, (uint32_t*)numWordQGPU, 
+		(GPUHashInfoTable*)taskinfoTable, alpha,
+		(double*)distanceResultGPU);
+	cudaDeviceSynchronize();
+	//for (int i = 0; i < dataSizeP*dataSizeQ; i++) {
+	//	printf("d(%zd,%zd)=%f\t", i / dataSizeQ, i%dataSizeQ, distanceResult[i]);
+	//}
+
+	// free memory
+	CUDA_CALL(cudaFreeHost(distanceResult));
+	free(hausTaskInfoCPU);
 
 	return 0;
 }

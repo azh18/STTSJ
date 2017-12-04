@@ -8,8 +8,9 @@
 using std::vector;
 using std::map;
 
+void CUDAwarmUp();
 void* GPUMalloc(size_t byteNum);
-int calculateDistanceGPU(const vector<STTraj> &trajSetP,
-	const vector<STTraj> &trajSetQ,
+int calculateDistanceGPU(vector<STTraj> &trajSetP,
+	vector<STTraj> &trajSetQ,
 	map<trajPair, double> &result,
-	void* baseGPUAddr, cudaStream_t &stream);
+	void* baseGPUAddr, double alpha, cudaStream_t &stream);
