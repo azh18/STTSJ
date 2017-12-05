@@ -235,7 +235,8 @@ void* GPUMalloc(size_t byteNum) {
 int calculateDistanceGPU(vector<STTraj> &trajSetP,
 	vector<STTraj> &trajSetQ,
 	map<trajPair, double> &result,
-	void* baseGPUAddr, double alpha, cudaStream_t &stream) {
+	void* baseGPUAddr, void* baseGPUAddr8byteAligned, double alpha, double epsilon,
+	cudaStream_t &stream) {
 	// Latlon *latlonDataPCPU, *latlonDataQCPU; // latlon array
 	// int *textDataPCPU, *textDataQCPU; 
 	vector<int> textDataPCPU, textDataQCPU; // keyword array
@@ -246,6 +247,8 @@ int calculateDistanceGPU(vector<STTraj> &trajSetP,
 	vector<Latlon> latlonDataPCPU, latlonDataQCPU;
 	GPUHausInfoTable *hausTaskInfoCPU = (GPUHashInfoTable*)malloc(sizeof(GPUHashInfoTable)*dataSizeP*dataSizeQ);
 
+	//MyTimer timer;
+	//timer.start();
 	//Latlon *latlon = latlonDataPCPU;
 	//size_t keywordNum[1000];
 	uint32_t pointCnt = 0,  textCnt = 0;
@@ -272,11 +275,11 @@ int calculateDistanceGPU(vector<STTraj> &trajSetP,
 		}
 	}
 	void* latlonDataPGPU, *latlonDataQGPU, *textDataPGPU, *textDataQGPU, *textIdxPGPU, *textIdxQGPU, *numWordPGPU, *numWordQGPU;
-	void *pNow = baseGPUAddr;
+	void *pNow = baseGPUAddr, *pNow8ByteAligned = baseGPUAddr8byteAligned;
 	// Copy data of P to GPU
-	CUDA_CALL(cudaMemcpyAsync(pNow, &latlonDataPCPU[0], sizeof(Latlon)*latlonDataPCPU.size(), cudaMemcpyHostToDevice, stream));
-	latlonDataPGPU = pNow;
-	pNow = (void*)((char*)pNow + sizeof(Latlon)*latlonDataPCPU.size());
+	CUDA_CALL(cudaMemcpyAsync(pNow8ByteAligned, &latlonDataPCPU[0], sizeof(Latlon)*latlonDataPCPU.size(), cudaMemcpyHostToDevice, stream));
+	latlonDataPGPU = pNow8ByteAligned;
+	pNow8ByteAligned = (void*)((char*)pNow8ByteAligned + sizeof(Latlon)*latlonDataPCPU.size());
 	CUDA_CALL(cudaMemcpyAsync(pNow, &textDataPCPU[0], sizeof(int)*textDataPCPU.size(), cudaMemcpyHostToDevice, stream));
 	textDataPGPU = pNow;
 	pNow = (void*)((char*)pNow + sizeof(int)*textDataPCPU.size());
@@ -291,7 +294,7 @@ int calculateDistanceGPU(vector<STTraj> &trajSetP,
 	pointCnt = 0; textCnt = 0;
 	for (size_t i = 0; i < trajSetQ.size(); i++) {
 		//update table for Q[][i]
-		for (size_t j = i; j < i + dataSizeP*dataSizeQ; j+=dataSizeP) {
+		for (size_t j = i; j < dataSizeP*dataSizeQ; j+=dataSizeQ) {
 			hausTaskInfoCPU[j].pointNumQ = (uint32_t)trajSetQ[i].points.size();
 			hausTaskInfoCPU[j].latlonIdxQ = pointCnt;
 		}
@@ -300,6 +303,7 @@ int calculateDistanceGPU(vector<STTraj> &trajSetP,
 			Latlon p;
 			p.lat = trajSetQ[i].points[j].lat;
 			p.lon = trajSetQ[i].points[j].lon;
+			// printf("%d,%d,",i, j);
 			latlonDataQCPU.push_back(p);
 			numWordQCPU.push_back((uint32_t)trajSetQ[i].points[j].keywords.size());
 			pointCnt++;
@@ -313,12 +317,16 @@ int calculateDistanceGPU(vector<STTraj> &trajSetP,
 	// cpu data build finished
 	// transfer data to GPU
 	// Copy data of P to GPU
-	CUDA_CALL(cudaMemcpyAsync(pNow, &latlonDataQCPU[0], sizeof(Latlon)*latlonDataQCPU.size(), cudaMemcpyHostToDevice, stream));
-	latlonDataQGPU = pNow;
-	pNow = (void*)((char*)pNow + sizeof(Latlon)*latlonDataQCPU.size());
+	// this order is to guarantee aligned load in GPU
+
+	CUDA_CALL(cudaMemcpyAsync(pNow8ByteAligned, &latlonDataQCPU[0], sizeof(Latlon)*latlonDataQCPU.size(), cudaMemcpyHostToDevice, stream));
+	latlonDataQGPU = pNow8ByteAligned;
+	pNow8ByteAligned = (void*)((char*)pNow8ByteAligned + sizeof(Latlon)*latlonDataQCPU.size());
+
 	CUDA_CALL(cudaMemcpyAsync(pNow, &textDataQCPU[0], sizeof(int)*textDataQCPU.size(), cudaMemcpyHostToDevice, stream));
 	textDataQGPU = pNow;
 	pNow = (void*)((char*)pNow + sizeof(int)*textDataQCPU.size());
+
 	CUDA_CALL(cudaMemcpyAsync(pNow, &textIdxQCPU[0], sizeof(uint32_t)*textIdxQCPU.size(), cudaMemcpyHostToDevice, stream));
 	textIdxQGPU = pNow;
 	pNow = (void*)((char*)pNow + sizeof(uint32_t)*textIdxQCPU.size());
@@ -334,7 +342,9 @@ int calculateDistanceGPU(vector<STTraj> &trajSetP,
 	double *distanceResult,*distanceResultGPU;
 	CUDA_CALL(cudaHostAlloc((void**)&distanceResult, dataSizeP*dataSizeQ*sizeof(double), cudaHostAllocMapped));
 	CUDA_CALL(cudaHostGetDevicePointer((void**)&distanceResultGPU, distanceResult, 0));
-
+	//cudaDeviceSynchronize();
+	//timer.stop();
+	//std::cout << timer.elapse() << "ms to copy data" << std::endl;
 	computeHausdorffDistanceByGPU << <(uint32_t)dataSizeP*(uint32_t)dataSizeQ, THREAD_NUM, 0, stream >> > ((Latlon*)latlonDataPGPU, 
 		(int*)textDataPGPU, (uint32_t*)textIdxPGPU, (Latlon*)latlonDataQGPU, 
 		(int*)textDataQGPU, (uint32_t*)textIdxQGPU, 
@@ -346,6 +356,11 @@ int calculateDistanceGPU(vector<STTraj> &trajSetP,
 	//for (int i = 0; i < dataSizeP*dataSizeQ; i++) {
 	//	printf("d(%zd,%zd)=%f\t", i / dataSizeQ, i%dataSizeQ, distanceResult[i]);
 	//}
+	// write result
+	for (int i = 0; i < dataSizeP*dataSizeQ; i++) {
+		if(distanceResult[i] <= epsilon)
+			result[trajPair(i / dataSizeQ, i%dataSizeQ)] = distanceResult[i];
+	}
 
 	// free memory
 	CUDA_CALL(cudaFreeHost(distanceResult));

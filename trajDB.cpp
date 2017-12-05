@@ -6,6 +6,7 @@ using std::stringstream;
 using std::ifstream;
 using std::istreambuf_iterator;
 using std::string;
+using std::ofstream;
 
 trajDB::trajDB()
 {
@@ -109,7 +110,7 @@ size_t trajDB::getAllPointNum()
 int trajDB::runDefaultTest(double epsilon, double alpha, int setSize1, int setSize2)
 {
 	// test exhausted join on CPU
-	test.defaultTest(epsilon, alpha, setSize1, setSize2);
+	//test.defaultTest(epsilon, alpha, setSize1, setSize2);
 
 	// test exhausted join on GPU
 	JoinTest testExhaustGPU;
@@ -123,6 +124,130 @@ int trajDB::runDefaultTest(double epsilon, double alpha, int setSize1, int setSi
 	testExhaustGPU.joinExhaustedGPU(epsilon, alpha, joinsetP, joinsetQ, testResult);
 	// map<trajPair, double> tt;
 	// calculateDistanceGPU((this->data), (this->data), tt);
+	return 0;
+}
+
+int trajDB::getDatasetInformation()
+{
+	int totalWordNum=0;
+	map<int, int> wordNumDistribution;
+	int totalPointNum=0;
+	map<int, int> pointNumDistribution;
+	for (size_t i = 0; i < this->data.size(); i++) {
+		totalPointNum += (int)this->data[i].points.size();
+		if (pointNumDistribution.find((int)this->data[i].points.size()) == pointNumDistribution.end()) {
+			pointNumDistribution[(int)this->data[i].points.size()] = 1;
+		}
+		else
+			pointNumDistribution[(int)this->data[i].points.size()]++;
+		for (size_t j = 0; j < this->data[i].points.size(); j++) {
+			totalWordNum += (int)this->data[i].points[j].keywords.size();
+			if (wordNumDistribution.find((int)this->data[i].points[j].keywords.size()) == wordNumDistribution.end()) {
+				wordNumDistribution[(int)this->data[i].points[j].keywords.size()] = 1;
+			}
+			else
+				wordNumDistribution[(int)this->data[i].points[j].keywords.size()]++;
+		}
+	}
+	ofstream infoFile("datasetInfo.txt", std::ios_base::out);
+	for (map<int, int>::iterator it = wordNumDistribution.begin(); it != wordNumDistribution.end(); it++) {
+		infoFile << it->first << ",";
+	}
+	infoFile << "\n";
+	for (map<int, int>::iterator it = wordNumDistribution.begin(); it != wordNumDistribution.end(); it++) {
+		infoFile << it->second << ",";
+	}
+	infoFile << "\n";
+	for (map<int, int>::iterator it = pointNumDistribution.begin(); it != pointNumDistribution.end(); it++) {
+		infoFile << it->first << ",";
+	}
+	infoFile << "\n";
+	for (map<int, int>::iterator it = pointNumDistribution.begin(); it != pointNumDistribution.end(); it++) {
+		infoFile << it->second << ",";
+	}
+	infoFile.close();
+	std::cout << this->data.size() << "trajectories, " <<
+		totalPointNum << "points and " << totalWordNum << "words.\n";
+	getchar();
+	return 0;
+}
+
+// probe from a point p in P
+// return a lowerbound of unseen trajectories
+// wait for unit test
+double trajDB::similarityGridProber(STPoint &p, int probeIter, double alpha, double epsilon,
+	set<size_t>& candTrajs, set<size_t>& filteredTrajs)
+{
+	// get cellid of current point p
+	int cid_of_p = this->gridIndex.getCellIDFromCoordinate(p.lat, p.lon);
+	// find cells should be probed according to probeIter
+	vector<int> probedCellIds;
+	double lowerboundSpatial = this->gridIndex.getSurroundCellID(p, probeIter, cid_of_p, probedCellIds);
+	if (lowerboundSpatial < 0.000001 && probeIter >0) {
+		// 说明probe已经超出范围，不必再继续
+		return -1.0;
+	}
+	// get a set of trajs that overlap these cells
+	set<size_t> probedTrajs;
+	for (size_t i = 0; i < probedCellIds.size(); i++) {
+		vector<size_t> trajsInThisCell;
+		this->gridIndex.getTrajsOverlappedCell(probedCellIds[i], trajsInThisCell);
+		for (int j = 0; j < trajsInThisCell.size(); j++) {
+			probedTrajs.insert(trajsInThisCell[j]);
+		}
+	}
+	// for each trajs, if not in two sets, check condition and insert it into sets
+	for (set<size_t>::iterator it = probedTrajs.begin(); it != probedTrajs.end(); it++) {
+		size_t tid = *it;
+		if (candTrajs.find(tid) == candTrajs.end() && filteredTrajs.find(tid) == filteredTrajs.end()) {
+			// find dT(min)
+			double jaccardMax = 0;
+			for (size_t i = 0; i < this->data[tid].points.size(); i++) {
+				double tempJaccardMax = min(p.keywords.size(), this->data[tid].points[i].keywords.size()) /
+					max(p.keywords.size(), this->data[tid].points[i].keywords.size());
+				if (tempJaccardMax > jaccardMax)
+					jaccardMax = tempJaccardMax;
+			}
+			double dTmin = 1 - jaccardMax;
+			if (alpha * lowerboundSpatial + (1 - alpha)*dTmin > epsilon)
+				filteredTrajs.insert(tid);
+			else
+				candTrajs.insert(tid);
+		}
+	}
+
+	return lowerboundSpatial;
+}
+
+// wait for unit test
+int trajDB::similarityGridFilter(STTraj & t, vector<STTraj>& Pset, double alpha, double epsilon, vector<STTraj>& candTraj)
+{
+	// for each p in t, probe new trajs
+	set<size_t> candTrajSet, filteredTrajSet; // two sets of trajs which is candidate or filtered
+	double lowerBoundSpatial = 0;
+	int probeIter = 0;
+	// start filter phase, until all trajs are distributed in cand and filter, or none of traj can be in cand
+	while (candTrajSet.size() + filteredTrajSet.size() < Pset.size() && lowerBoundSpatial <= epsilon / alpha) {
+		// calculate the lowerboundSpatial now
+		lowerBoundSpatial = 9999.9;
+		for (size_t i = 0; i < t.points.size(); i++) {
+			// for this point, invoke probe to update candTraj and filteredTraj
+			double tempLB = this->similarityGridProber(t.points[i], probeIter,
+					alpha, epsilon, candTrajSet, filteredTrajSet);
+			if (tempLB < 0) {
+				// 无效LB
+				continue;
+			}
+			else {
+				lowerBoundSpatial = (lowerBoundSpatial < tempLB ? lowerBoundSpatial : tempLB);
+			}
+		}
+		probeIter++;
+	}
+	// 结束后所有candTrajSet中的都是candidate，其他的都可以filter掉
+	for (set<size_t>::iterator it = candTrajSet.begin(); it != candTrajSet.end(); it++) {
+		candTraj.push_back(*it);
+	}
 	return 0;
 }
 

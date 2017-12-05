@@ -18,6 +18,12 @@ STPoint::STPoint(double lat, double lon, std::vector<int> keywords)
 	this->keywords = keywords;
 }
 
+STPoint::STPoint(double lat, double lon)
+{
+	this->lat = lat;
+	this->lon = lon;
+}
+
 STPoint::STPoint()
 {
 	this->lat = 0;

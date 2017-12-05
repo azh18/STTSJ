@@ -15,8 +15,8 @@ int main() {
 	db->cleanOutsideData();
 	db->buildGridIndex(0.1, 0.1);
 	db->test.init(&db->data, &db->gridIndex);
-	
-	db->runDefaultTest(0.6, 0.5, 100, 100);
+	//db->getDatasetInformation();
+	db->runDefaultTest(0.6, 0.5, 128, 128);
 	//pointNum = db->getAllPointNum();
 	// std::cout << pointNum << std::endl;
 	getchar();

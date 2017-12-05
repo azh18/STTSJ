@@ -13,4 +13,5 @@ void* GPUMalloc(size_t byteNum);
 int calculateDistanceGPU(vector<STTraj> &trajSetP,
 	vector<STTraj> &trajSetQ,
 	map<trajPair, double> &result,
-	void* baseGPUAddr, double alpha, cudaStream_t &stream);
+	void* baseGPUAddr, void* baseGPUAddr8byteAligned, double alpha, double epsilon,
+	cudaStream_t &stream);

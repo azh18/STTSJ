@@ -26,6 +26,12 @@ public:
 	int buildGridIndex(double resl_lat, double resl_lon);
 	size_t getAllPointNum();
 	int runDefaultTest(double epsilon, double alpha, int setSize1, int setSize2);
+	int getDatasetInformation();
+	double similarityGridProber(STPoint &p, int probeIter, double alpha, double epsilon,
+		set<size_t> &candTrajs, set<size_t> &filteredTrajs);
+	int similarityGridFilter(STTraj &t, vector<STTraj> &Pset, 
+		double alpha, double epsilon, 
+		vector<STTraj> &candTraj);
 
 	MBR getMBRofAllData();
 

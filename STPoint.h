@@ -7,6 +7,7 @@ public:
 	double lon;
 	std::vector<int> keywords;
 	STPoint(double lat, double lon, std::vector<int> keywords);
+	STPoint(double lat, double lon);
 	STPoint();
 	size_t getKeywordSize();
 	double STdistance(STPoint &p, double alpha); // wait for construct
