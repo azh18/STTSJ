@@ -85,8 +85,8 @@ double STTraj::HausdorffDistance(STTraj & traj, double alpha)
 		}
 	}
 	hausd1 = maxD;
-	double maxDSpatial1, maxDTextual1;
 #ifdef DISPLAY_SPATIAL_TEXTUAL
+	double maxDSpatial1, maxDTextual1;
 	maxDSpatial1 = maxDSpatial;
 	maxDTextual1 = maxDTextual;
 #endif // DISPLAY_SPATIAL_TEXTUAL
@@ -115,8 +115,8 @@ double STTraj::HausdorffDistance(STTraj & traj, double alpha)
 		}
 	}
 	hausd2 = maxD;
-	double maxDSpatial2, maxDTextual2;
 #ifdef DISPLAY_SPATIAL_TEXTUAL
+	double maxDSpatial2, maxDTextual2;
 	maxDSpatial2 = maxDSpatial;
 	maxDTextual2 = maxDTextual;
 #endif // DISPLAY_SPATIAL_TEXTUAL

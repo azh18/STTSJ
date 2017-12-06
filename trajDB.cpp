@@ -85,7 +85,6 @@ int trajDB::cleanOutsideData()
 
 	for (size_t i = 0; i < this->data.size(); i++) {
 		for (vector<STPoint>::iterator iter = this->data[i].points.begin(); iter!=this->data[i].points.end();) {
-			bool containInOverallMBR;
 			for (vector<int>::iterator itk = iter->keywords.begin(); itk != iter->keywords.end(); ) {
 				if (deleteWord.find(*itk) != deleteWord.end()) {
 					itk = iter->keywords.erase(itk);
@@ -194,7 +193,8 @@ int trajDB::getDatasetInformation()
 // return a lowerbound of unseen trajectories
 // wait for unit test
 double trajDB::similarityGridProber(STPoint &p, set<size_t> &Pset, int probeIter, double alpha, double epsilon,
-	set<size_t>& candTrajs, set<size_t>& filteredTrajs)
+	set<size_t>& candTrajs, set<size_t>& filteredTrajs,
+	vector<map<size_t, bool>> &probedTable, map<size_t, int> &probedTimeArray, int pi)
 {
 	// get cellid of current point p
 	int cid_of_p = this->gridIndex.getCellIDFromCoordinate(p.lat, p.lon);
@@ -213,8 +213,15 @@ double trajDB::similarityGridProber(STPoint &p, set<size_t> &Pset, int probeIter
 		this->gridIndex.getTrajsOverlappedCell(probedCellIds[i], trajsInThisCell);
 		for (int j = 0; j < trajsInThisCell.size(); j++) {
 			// only process tid that fall into given set
-			if(Pset.find(trajsInThisCell[j])!=Pset.end())
+			if (Pset.find(trajsInThisCell[j]) != Pset.end() && 
+				probedTable[pi][trajsInThisCell[j]] == false &&
+				candTrajs.find(trajsInThisCell[j]) == candTrajs.end() && 
+				filteredTrajs.find(trajsInThisCell[j]) == filteredTrajs.end())
+			{
+				// then it need to be probed...
 				probedTrajs.insert(trajsInThisCell[j]);
+				probedTable[pi][trajsInThisCell[j]] = true;
+			}
 		}
 	}
 	// test
@@ -226,28 +233,27 @@ double trajDB::similarityGridProber(STPoint &p, set<size_t> &Pset, int probeIter
 	// for each trajs, if not in two sets, check condition and insert it into sets
 	for (set<size_t>::iterator it = probedTrajs.begin(); it != probedTrajs.end(); it++) {
 		size_t tid = *it;
-		if (candTrajs.find(tid) == candTrajs.end() && filteredTrajs.find(tid) == filteredTrajs.end()) {
-			// find dT(min)
-			double jaccardMax = 0;
-			for (size_t i = 0; i < this->data[tid].points.size(); i++) {
-				double tempJaccardMax = (double)(min(p.keywords.size(), this->data[tid].points[i].keywords.size())) /
-					max(p.keywords.size(), this->data[tid].points[i].keywords.size());
-				if (tempJaccardMax > jaccardMax)
-					jaccardMax = tempJaccardMax;
-			}
-			double dTmin = 1 - jaccardMax;
-			double dMin = alpha * lowerboundSpatial + (1 - alpha)*dTmin;
-			
-			if (dMin > epsilon)
-			{
-				printf("Traj %zd is filtered. spatial LB is:%f, textual LB is %f, overall LB is %f \n", tid,lowerboundSpatial, dMin, dTmin);
-				filteredTrajs.insert(tid);
-			}
-			else {
-				candTrajs.insert(tid);
-				printf("Insert traj %zd into cand. spatial LB is:%f, textual LB is %f, overall LB is %f\n", tid, lowerboundSpatial, dMin, dTmin);
-			}
+		// find dT(min)
+		double jaccardMax = 0;
+		for (size_t i = 0; i < this->data[tid].points.size(); i++) {
+			double tempJaccardMax = (double)(min(p.keywords.size(), this->data[tid].points[i].keywords.size())) /
+				max(p.keywords.size(), this->data[tid].points[i].keywords.size());
+			if (tempJaccardMax > jaccardMax)
+				jaccardMax = tempJaccardMax;
 		}
+		double dTmin = 1 - jaccardMax;
+		double dMin = alpha * lowerboundSpatial + (1 - alpha)*dTmin;
+			
+		if (dMin > epsilon)
+		{
+			printf("Traj %zd is filtered. spatial LB is:%f, textual LB is %f, overall LB is %f \n", tid,lowerboundSpatial, dTmin, dMin);
+			filteredTrajs.insert(tid);
+		}
+		else {
+			probedTimeArray[tid]--;
+			// printf("Insert traj %zd into cand. spatial LB is:%f, textual LB is %f, overall LB is %f\n", tid, lowerboundSpatial, dTmin, dMin);
+		}
+
 	}
 
 	return lowerboundSpatial;
@@ -257,18 +263,17 @@ double trajDB::similarityGridProber(STPoint &p, set<size_t> &Pset, int probeIter
 // wait for unit test
 int trajDB::similarityGridFilter(STTraj & t, set<size_t>& Pset, double alpha, double epsilon, vector<size_t>& candTraj)
 {
-	//// maintain a table to mark whether for point i, we have known mind(i,j)<epsilon
-	//bool **oneConstrainSatisfiedTable = new bool*[t.points.size()];
-	//for (size_t i = 0; i < t.points.size(); i++)
-	//{
-	//	oneConstrainSatisfiedTable[i] = new bool[Pset.size()];
-	//	for (size_t j = 0; j < Pset.size(); j++)
-	//		oneConstrainSatisfiedTable[i][j] = false;
-	//}
-	//// maintain an array, reduce 1 when traj is probed by a point, when turn to 0 move to cand set
-	//int *remainPointNeedToSatisfyArray = new int[Pset.size()];
-	//for (size_t i = 0; i < Pset.size(); i++)
-	//	remainPointNeedToSatisfyArray[i] = t.points.size();
+	// maintain a table to mark whether for point i, we have known mind(i,j)<epsilon
+	vector<map<size_t, bool>> oneConstrainSatisfiedTable(t.points.size());
+	for (size_t i = 0; i < t.points.size(); i++)
+	{
+		for (set<size_t>::iterator it=Pset.begin();it!=Pset.end();it++)
+			oneConstrainSatisfiedTable[i][(*it)] = false;
+	}
+	// maintain an array, reduce 1 when traj is probed by a point, when turn to 0 move to cand set
+	map<size_t, int> remainPointNeedToSatisfyArray;
+	for (set<size_t>::iterator it = Pset.begin(); it != Pset.end(); it++)
+		remainPointNeedToSatisfyArray[*it] = (int)t.points.size();
 
 	// for each p in t, probe new trajs
 	set<size_t> candTrajSet, filteredTrajSet; // two sets of trajs which is candidate or filtered
@@ -281,7 +286,8 @@ int trajDB::similarityGridFilter(STTraj & t, set<size_t>& Pset, double alpha, do
 		for (size_t i = 0; i < t.points.size(); i++) {
 			// for this point, invoke probe to update candTraj and filteredTraj
 			double tempLB = this->similarityGridProber(t.points[i], Pset, probeIter,
-					alpha, epsilon, candTrajSet, filteredTrajSet);
+				alpha, epsilon, candTrajSet, filteredTrajSet,
+				oneConstrainSatisfiedTable, remainPointNeedToSatisfyArray, (int)i); // need to be adapted
 			if (tempLB < 0) {
 				// 无效LB
 				continue;
@@ -290,13 +296,21 @@ int trajDB::similarityGridFilter(STTraj & t, set<size_t>& Pset, double alpha, do
 				lowerBoundSpatial = (lowerBoundSpatial < tempLB ? lowerBoundSpatial : tempLB);
 			}
 		}
+		//for (set<size_t>::iterator it = Pset.begin(); it != Pset.end(); it++) {
+		//	if (remainPointNeedToSatisfyArray[*it] == 0)
+		//		candTrajSet.insert(*it);
+		//}
 		probeIter++;
 		printf("\n an iteration finish.\n");
 	}
 	// 结束后所有candTrajSet中的都是candidate，其他的都可以filter掉
-	for (set<size_t>::iterator it = candTrajSet.begin(); it != candTrajSet.end(); it++) {
-		candTraj.push_back(*it);
-	}
+	//for (set<size_t>::iterator it = candTrajSet.begin(); it != candTrajSet.end(); it++) {
+	//	candTraj.push_back(*it);
+	//}
+	for (map<size_t, int>::iterator it = remainPointNeedToSatisfyArray.begin();
+		it != remainPointNeedToSatisfyArray.end(); it++)
+		if (it->second == 0)
+			candTraj.push_back(it->first);
 	return 0;
 }
 
@@ -323,7 +337,16 @@ int trajDB::testAllFunctions()
 	set<size_t> candTrajs, filteredTrajs, Pset;
 	for (size_t i = 0; i < 99; i++)
 		Pset.insert(i);
-	this->similarityGridProber(STPoint(39.12,-75.95),Pset, 2, 0.8, 0.3, candTrajs, filteredTrajs);
+	vector<map<size_t, bool>> oneConstrainSatisfiedTable(1);
+	for (set<size_t>::iterator it = Pset.begin(); it != Pset.end(); it++) {
+		oneConstrainSatisfiedTable[0][*it] = false;
+	}
+	map<size_t, int> remainPointNeedToSatisfyArray;
+	for (set<size_t>::iterator it = Pset.begin(); it != Pset.end(); it++) {
+		remainPointNeedToSatisfyArray[*it] = 1;
+	}
+	this->similarityGridProber(STPoint(39.12, -75.95), Pset, 2, 0.8, 0.15, candTrajs, filteredTrajs,
+		oneConstrainSatisfiedTable, remainPointNeedToSatisfyArray, 0);
 	printf("test SimilarityGridProber:\n");
 	for(size_t i=0;i<candTrajs.size();i++)
 		printf("%zd,", *(candTrajs.begin()));
@@ -333,9 +356,9 @@ int trajDB::testAllFunctions()
 	// result: lower bound is too loose
 	set<size_t> Qset;
 	vector<size_t> candTrajSet;
-	for (size_t i = 0; i < 999; i++)
+	for (size_t i = 0; i < 1999; i++)
 		Qset.insert(i);
-	this->similarityGridFilter(this->data[0], Qset, 0.8, 0.3, candTrajSet);
+	this->similarityGridFilter(this->data[0], Qset, 0.8, 0.2, candTrajSet);
 	printf("Here are all candidate trajectories:");
 	for (size_t i = 0; i < candTrajSet.size(); i++) {
 		printf("%zd,", candTrajSet[i]);
