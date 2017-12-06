@@ -16,7 +16,7 @@ public:
 	double HausdorffDistance(STTraj &traj, double alpha);
 	static int STTraj::unitTestForDist();
 	STTraj();
-	STTraj(int trajID);
+	explicit STTraj(int trajID);
 	~STTraj();
 };
  

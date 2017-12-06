@@ -4,6 +4,40 @@ Grid::Grid()
 {
 }
 
+int Grid::testAllMethods()
+{
+	printf("Test getCellIDFromCoordinate:\n");
+	printf("Input: scan from cell 1 to cell n\n");
+	for (double lat = 39.05; lat < 42; lat += 0.1) {
+		for (double lon = -75.95; lon < -72; lon += 0.1) {
+			printf("cell id=%d\t", this->getCellIDFromCoordinate(lat, lon));
+		}
+	}
+	printf("Test getSurroundCellID:\n");
+	printf("Input: p(39.12,-75.95) at cell(1,0), and probe = 2, so surround=");
+	printf("(3,0),(3,1),(3,2),(2,2),(1,2),(0,2), and minDist = 0.15");
+	vector<int> surroundCells;
+	double minDist = this->getSurroundCellID(STPoint(39.12, -75.95), 2, this->gridLonScale, surroundCells);
+	printf("output cells:");
+	for (int i = 0; i < surroundCells.size(); i++) {
+		printf("(%d,%d),", surroundCells[i] / this->gridLonScale, surroundCells[i] % this->gridLonScale);
+	}
+	printf("\nminDist = %f\n", minDist);
+
+	printf("Test getSurroundCellID:\n");
+	printf("Input: p(41.98, -71.95) at cell(29,40), and probe = 2, so surround=");
+	printf("(29,37),(28,27),(27,37),(26,37),(26,38),(26,39), and minDist = 0.15");
+	surroundCells.clear();
+	minDist = this->getSurroundCellID(STPoint(41.98, -71.95), 2, this->getCellIDFromCoordinate(41.98, -71.95), surroundCells);
+	printf("output cells:");
+	for (int i = 0; i < surroundCells.size(); i++) {
+		printf("(%d,%d),", surroundCells[i] / this->gridLonScale, surroundCells[i] % this->gridLonScale);
+	}
+	printf("\nminDist = %f\n", minDist);
+
+	return 0;
+}
+
 int Grid::initial(const MBR & overallBound, double resl_lat, double resl_lon)
 {
 	this->allSpaceBound = overallBound;
@@ -37,7 +71,7 @@ int Grid::addTrajIntoGrid(const STTraj & traj)
 	return 0;
 }
 
-// wait for unit test
+// test pass
 int Grid::getCellIDFromCoordinate(double lat, double lon)
 {
 	int lat_idx = (int)((lat - this->allSpaceBound.lat1) / this->resl_lat);
@@ -48,7 +82,7 @@ int Grid::getCellIDFromCoordinate(double lat, double lon)
 
 // get surround cells which are within probeIter cell from cellid
 // return the maximum distance of probeIter
-// wait for unit test
+// unit test pass
 // if edge is over the overall MBR, this edge will be ignored. (guarantee LB is growing)
 double Grid::getSurroundCellID(STPoint &p, int probeIter, int cellid, vector<int> &cells)
 {
@@ -97,15 +131,15 @@ double Grid::getSurroundCellID(STPoint &p, int probeIter, int cellid, vector<int
 	}
 	// left-down corner
 	if (largestLatIdx < this->gridLatScale && smallestLonIdx >= 0) {
-		cells.push_back(smallestLatIdx * this->gridLonScale + smallestLonIdx);
+		cells.push_back(largestLatIdx * this->gridLonScale + smallestLonIdx);
 	}
 	// right-up corner
 	if (smallestLatIdx >= 0 && largestLonIdx < this->gridLonScale) {
-		cells.push_back(smallestLatIdx * this->gridLonScale + smallestLonIdx);
+		cells.push_back(smallestLatIdx * this->gridLonScale + largestLonIdx);
 	}
 	// right-down corner
 	if (largestLatIdx <this->gridLatScale && largestLonIdx < this->gridLonScale) {
-		cells.push_back(smallestLatIdx * this->gridLonScale + smallestLonIdx);
+		cells.push_back(largestLatIdx * this->gridLonScale + largestLonIdx);
 	}
 	// put edge and compute lowerbound of spatial distance
 	double spatialDistanceMin = 9999;

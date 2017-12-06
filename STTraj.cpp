@@ -1,4 +1,6 @@
 #include "STTraj.h"
+// #define DISPLAY_SPATIAL_TEXTUAL
+
 using std::set;
 using std::map;
 
@@ -60,31 +62,78 @@ double STTraj::HausdorffDistance(STTraj & traj, double alpha)
 	double hausd1, hausd2;
 	// compute this to traj
 	double maxD = 0;
+	double maxDSpatial = 0, maxDTextual = 0;
 	for (int i = 0; i < this->points.size(); i++) {
-		double minD = 999990;
+		double minD = 999990; 
+		double minDSpatial = 99990, minDTextual = 99990;
 		for (int j = 0; j < traj.points.size(); j++) {
 			double distance = this->points[i].STdistance(traj.points[j], alpha);
-			if (distance < minD)
+			if (distance < minD) {
 				minD = distance;
+#ifdef DISPLAY_SPATIAL_TEXTUAL
+				minDSpatial = this->points[i].Sdistance(traj.points[j]);
+				minDTextual = this->points[i].Tdistance(traj.points[j]);
+#endif // DISPLAY_SPATIAL_TEXTUAL
+			}
 		}
-		if (minD > maxD)
+		if (minD > maxD) {
 			maxD = minD;
+#ifdef DISPLAY_SPATIAL_TEXTUAL
+			maxDSpatial = minDSpatial;
+			maxDTextual = minDTextual;
+#endif // DISPLAY_SPATIAL_TEXTUAL
+		}
 	}
 	hausd1 = maxD;
+	double maxDSpatial1, maxDTextual1;
+#ifdef DISPLAY_SPATIAL_TEXTUAL
+	maxDSpatial1 = maxDSpatial;
+	maxDTextual1 = maxDTextual;
+#endif // DISPLAY_SPATIAL_TEXTUAL
 	// compute traj to this
-	maxD = 0;
+	maxD = 0; maxDSpatial = 0; maxDTextual = 0;
 	for (int i = 0; i < traj.points.size(); i++) {
-		double minD = 999990;
+		double minD = 999990; 
+		double minDSpatial = 99990, minDTextual = 99990;
 		for (int j = 0; j < this->points.size(); j++) {
 			double distance = traj.points[i].STdistance(this->points[j], alpha);
 			if (distance < minD)
+			{
 				minD = distance;
+#ifdef DISPLAY_SPATIAL_TEXTUAL
+				minDSpatial = traj.points[i].Sdistance(this->points[j]);
+				minDTextual = traj.points[i].Tdistance(this->points[j]);
+#endif // DISPLAY_SPATIAL_TEXTUAL
+			}
 		}
-		if (minD > maxD)
+		if (minD > maxD) {
 			maxD = minD;
+#ifdef DISPLAY_SPATIAL_TEXTUAL
+			maxDSpatial = minDSpatial;
+			maxDTextual = minDTextual;
+#endif // DISPLAY_SPATIAL_TEXTUAL
+		}
 	}
 	hausd2 = maxD;
-	return (hausd1 > hausd2 ? hausd1 : hausd2);
+	double maxDSpatial2, maxDTextual2;
+#ifdef DISPLAY_SPATIAL_TEXTUAL
+	maxDSpatial2 = maxDSpatial;
+	maxDTextual2 = maxDTextual;
+#endif // DISPLAY_SPATIAL_TEXTUAL
+	if (hausd1 > hausd2)
+	{
+#ifdef DISPLAY_SPATIAL_TEXTUAL
+		printf("Ds:%f,Dt:%f,D:%f.\t", maxDSpatial1, maxDTextual1, hausd1);
+#endif
+		return hausd1;
+	}
+	else
+	{
+#ifdef DISPLAY_SPATIAL_TEXTUAL
+		printf("Ds:%f,Dt:%f,D:%f.\t", maxDSpatial2, maxDTextual2, hausd2);
+#endif
+		return hausd2;
+	}
 }
 
 STTraj::STTraj()

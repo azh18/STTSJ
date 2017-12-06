@@ -37,6 +37,7 @@ size_t STPoint::getKeywordSize()
 
 double STPoint::STdistance(STPoint & p, double alpha)
 {
+
 	return (this->Sdistance(p)*alpha + this->Tdistance(p)*(1 - alpha));
 }
 

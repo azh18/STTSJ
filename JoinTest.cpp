@@ -27,11 +27,11 @@ int JoinTest::defaultTest(double epsilon, double alpha, int setSize1, int setSiz
 	this->joinExhaustedCPU(epsilon, alpha, this->taskSet1, this->taskSet2, result);
 	timer.stop();
 	printf("Elapsed Time: %f ms\n", timer.elapse());
-	/*
+	
 	for (map<trajPair, double>::iterator it = result.begin(); it != result.end(); it++) {
 		printf("Pair:(%zd, %zd) Distance: %f\t", it->first.first, it->first.second, it->second);
 	}
-	*/
+	
 	return 0;
 }
 

@@ -27,13 +27,17 @@ public:
 	size_t getAllPointNum();
 	int runDefaultTest(double epsilon, double alpha, int setSize1, int setSize2);
 	int getDatasetInformation();
-	double similarityGridProber(STPoint &p, int probeIter, double alpha, double epsilon,
+	double similarityGridProber(STPoint &p, set<size_t> &Pset, int probeIter, double alpha, double epsilon,
 		set<size_t> &candTrajs, set<size_t> &filteredTrajs);
-	int similarityGridFilter(STTraj &t, vector<STTraj> &Pset, 
+	int similarityGridFilter(STTraj &t, set<size_t> &Pset, 
 		double alpha, double epsilon, 
-		vector<STTraj> &candTraj);
+		vector<size_t> &candTraj);
 
 	MBR getMBRofAllData();
+	MBR getMBRofAllData(MBR &mbr);
+
+	//unit test
+	int testAllFunctions();
 
 
 
