@@ -2,6 +2,9 @@
 #include<fstream>
 #include<sstream>
 #include "gpuKernel.h"
+#define min(x,y) x>y?y:x
+#define max(x,y) x>y?x:y
+
 using std::stringstream;
 using std::ifstream;
 using std::istreambuf_iterator;
@@ -115,6 +118,16 @@ int trajDB::buildGridIndex(double resl_lat, double resl_lon)
 	return 0;
 }
 
+int trajDB::buildBloomFilter(double errorTolerance)
+{
+	for (int i = 0; i < this->data.size(); i++) {
+		this->data[i].generateBloomFilter(errorTolerance);
+	}
+	return 0;
+}
+
+
+
 size_t trajDB::getAllPointNum()
 {
 	size_t totalNum = 0;
@@ -127,8 +140,8 @@ size_t trajDB::getAllPointNum()
 int trajDB::runDefaultTest(double epsilon, double alpha, int setSize1, int setSize2)
 {
 	// test exhausted join on CPU
-	test.defaultTest(epsilon, alpha, setSize1, setSize2);
-	getchar();
+	// test.defaultTest(epsilon, alpha, setSize1, setSize2);
+	// getchar();
 	// test exhausted join on GPU
 	JoinTest testExhaustGPU;
 	testExhaustGPU.init(&this->data, &this->gridIndex);
@@ -138,7 +151,15 @@ int trajDB::runDefaultTest(double epsilon, double alpha, int setSize1, int setSi
 		joinsetP.push_back(i);
 	for (size_t i = 0; i < setSize2; i++)
 		joinsetQ.push_back(i);
+
 	testExhaustGPU.joinExhaustedGPU(epsilon, alpha, joinsetP, joinsetQ, testResult);
+
+	//vector<size_t> joinsetP1, joinsetQ1;
+	//joinsetP1.push_back(0);
+	//joinsetQ1.push_back(12);
+	//testExhaustGPU.joinExhaustedGPU(epsilon, alpha, joinsetP1, joinsetQ1, testResult);
+
+
 	// map<trajPair, double> tt;
 	// calculateDistanceGPU((this->data), (this->data), tt);
 	return 0;
@@ -192,9 +213,15 @@ int trajDB::getDatasetInformation()
 // probe from a point p in P
 // return a lowerbound of unseen trajectories
 // wait for unit test
+/*
+	textualLBType
+	0: use original Jaccard max
+	1: use lowerbound based on bloom filter
+*/
 double trajDB::similarityGridProber(STPoint &p, set<size_t> &Pset, int probeIter, double alpha, double epsilon,
 	set<size_t>& candTrajs, set<size_t>& filteredTrajs,
-	vector<map<size_t, bool>> &probedTable, map<size_t, int> &probedTimeArray, int pi)
+	vector<map<size_t, bool>> &probedTable, map<size_t, int> &probedTimeArray, int pi,
+	int textualLBType)
 {
 	// get cellid of current point p
 	int cid_of_p = this->gridIndex.getCellIDFromCoordinate(p.lat, p.lon);
@@ -225,21 +252,45 @@ double trajDB::similarityGridProber(STPoint &p, set<size_t> &Pset, int probeIter
 		}
 	}
 	// test
-	printf("\nprobed tid:\n");
-	for (set<size_t>::iterator it = probedTrajs.begin(); it != probedTrajs.end(); it++)
-		printf("%zd,", *it);
-	printf("\n");
+	//printf("\nprobed tid:\n");
+	//for (set<size_t>::iterator it = probedTrajs.begin(); it != probedTrajs.end(); it++)
+	//	printf("%zd,", *it);
+	//printf("\n");
 	// test
 	// for each trajs, if not in two sets, check condition and insert it into sets
 	for (set<size_t>::iterator it = probedTrajs.begin(); it != probedTrajs.end(); it++) {
 		size_t tid = *it;
 		// find dT(min)
 		double jaccardMax = 0;
-		for (size_t i = 0; i < this->data[tid].points.size(); i++) {
-			double tempJaccardMax = (double)(min(p.keywords.size(), this->data[tid].points[i].keywords.size())) /
-				max(p.keywords.size(), this->data[tid].points[i].keywords.size());
-			if (tempJaccardMax > jaccardMax)
-				jaccardMax = tempJaccardMax;
+		if (textualLBType == 0) {
+			for (size_t i = 0; i < this->data[tid].points.size(); i++) {
+				double tempJaccardMax = (double)(min(p.keywords.size(), this->data[tid].points[i].keywords.size())) /
+					max(p.keywords.size(), this->data[tid].points[i].keywords.size());
+				if (tempJaccardMax > jaccardMax)
+					jaccardMax = tempJaccardMax;
+			}
+		}
+		else if (textualLBType == 1) {
+			int maximalMatchNum = 0;
+			for (int i = 0; i < p.keywords.size(); i++) {
+				if (this->data[tid].bfWords.contains(p.keywords[i]))
+					maximalMatchNum++;
+			}
+			// find minimum union size
+			int minimalUnionSize = 0;
+			for (int i = 0; i < this->data[tid].points.size(); i++) {
+				minimalUnionSize = this->data[tid].points[i].keywords.size() > minimalUnionSize ?
+					this->data[tid].points[i].keywords.size() : minimalUnionSize;
+			}
+			minimalUnionSize += p.keywords.size() - maximalMatchNum;
+			if (minimalUnionSize == 0) {
+				jaccardMax = 1;
+			}
+			else
+				jaccardMax = maximalMatchNum / minimalUnionSize;
+		}
+		else {
+			std::cerr << "have not define this textualLB type!!!" << std::endl;
 		}
 		double dTmin = 1 - jaccardMax;
 		double dMin = alpha * lowerboundSpatial + (1 - alpha)*dTmin;
@@ -287,7 +338,7 @@ int trajDB::similarityGridFilter(STTraj & t, set<size_t>& Pset, double alpha, do
 			// for this point, invoke probe to update candTraj and filteredTraj
 			double tempLB = this->similarityGridProber(t.points[i], Pset, probeIter,
 				alpha, epsilon, candTrajSet, filteredTrajSet,
-				oneConstrainSatisfiedTable, remainPointNeedToSatisfyArray, (int)i); // need to be adapted
+				oneConstrainSatisfiedTable, remainPointNeedToSatisfyArray, (int)i, 0); // need to be adapted
 			if (tempLB < 0) {
 				// ÎÞÐ§LB
 				continue;
@@ -322,7 +373,7 @@ MBR trajDB::getMBRofAllData()
 			j = 0;
 		}
 	}
-
+	return MBR(minx, miny, maxx, maxy);
 }
 
 MBR trajDB::getMBRofAllData(MBR &mbr)
@@ -346,7 +397,7 @@ int trajDB::testAllFunctions()
 		remainPointNeedToSatisfyArray[*it] = 1;
 	}
 	this->similarityGridProber(STPoint(39.12, -75.95), Pset, 2, 0.8, 0.15, candTrajs, filteredTrajs,
-		oneConstrainSatisfiedTable, remainPointNeedToSatisfyArray, 0);
+		oneConstrainSatisfiedTable, remainPointNeedToSatisfyArray, 0, 1);
 	printf("test SimilarityGridProber:\n");
 	for(size_t i=0;i<candTrajs.size();i++)
 		printf("%zd,", *(candTrajs.begin()));
@@ -356,13 +407,14 @@ int trajDB::testAllFunctions()
 	// result: lower bound is too loose
 	set<size_t> Qset;
 	vector<size_t> candTrajSet;
-	for (size_t i = 0; i < 1999; i++)
+	for (size_t i = 0; i < 10000; i++)
 		Qset.insert(i);
-	this->similarityGridFilter(this->data[0], Qset, 0.8, 0.2, candTrajSet);
-	printf("Here are all candidate trajectories:");
-	for (size_t i = 0; i < candTrajSet.size(); i++) {
-		printf("%zd,", candTrajSet[i]);
-	}
+	this->similarityGridFilter(this->data[0], Qset, 0.5, 0.55, candTrajSet);
+	printf("Total:%zd,Filtered:%zd\n", Qset.size(), candTrajSet.size());
+	//printf("Here are all candidate trajectories:");
+	//for (size_t i = 0; i < candTrajSet.size(); i++) {
+	//	printf("%zd,", candTrajSet[i]);
+	//}
 	return 0;
 }
 

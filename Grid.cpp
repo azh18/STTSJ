@@ -1,4 +1,6 @@
 #include "Grid.h"
+#define min(x,y) x>y?y:x
+#define max(x,y) x>y?x:y
 
 Grid::Grid()
 {

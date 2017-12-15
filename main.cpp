@@ -16,12 +16,13 @@ int main() {
 	db->getMBRofAllData(MBR(39.0, 42.0, -76.0, -72.0));
 	db->cleanOutsideData();
 	db->buildGridIndex(0.1, 0.1);
-	db->testAllFunctions();
+	// db->buildBloomFilter(BLOOM_FILTER_ERROR);
+	// db->testAllFunctions();
 	// getchar();
 
 	db->test.init(&db->data, &db->gridIndex);
 	// db->getDatasetInformation();
-	db->runDefaultTest(0.3, 0.8, 128, 128);
+	db->runDefaultTest(0.4,1, 100, 100);
 	//pointNum = db->getAllPointNum();
 	// std::cout << pointNum << std::endl;
 	getchar();

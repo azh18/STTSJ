@@ -136,6 +136,30 @@ double STTraj::HausdorffDistance(STTraj & traj, double alpha)
 	}
 }
 
+int STTraj::generateBloomFilter(double errorTole)
+{
+	// compute keyword num
+	set<int> keywordIntersect;
+	for (size_t i = 0; i < this->points.size(); i++) {
+		for (size_t j = 0; j < this->points[i].keywords.size(); j++) {
+			keywordIntersect.insert(this->points[i].keywords[j]);
+		}
+	}
+	// compute optimal parameters
+	this->bfParam.projected_element_count = keywordIntersect.size();
+	this->bfParam.false_positive_probability = errorTole;
+	this->bfParam.random_seed = 0xA5A5A5A5;
+	this->bfParam.compute_optimal_parameters();
+	this->bfWords = bloom_filter(this->bfParam);
+	// insert elements to filter
+	for (size_t i = 0; i < this->points.size(); i++) {
+		for (size_t j = 0; j < this->points[i].keywords.size(); j++) {
+			this->bfWords.insert(this->points[i].keywords[j]);
+		}
+	}
+	return 0;
+}
+
 STTraj::STTraj()
 {
 }

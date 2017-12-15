@@ -5,6 +5,10 @@
 #include <assert.h>
 #include <stdio.h>
 #include "GlobalHeader.h"
+#include "sm_35_atomic_functions.h"
+#include <cuda.h>
+#include "curand.h"
+#include "device_functions.h"
 
 
 #define CUDA_CALL(x) { const cudaError_t a = (x); if (a!= cudaSuccess) { printf("\nCUDA Error: %s(err_num=%d)\n", cudaGetErrorString(a), a); cudaDeviceReset(); assert(0);}}
@@ -25,6 +29,18 @@ cudaError_t addWithCuda(int *c, const int *a, const int *b, unsigned int size);
 void CUDAwarmUp() {
 	CUDA_CALL(cudaSetDeviceFlags(cudaDeviceMapHost));
 	CUDA_CALL(cudaSetDevice(0));
+}
+
+static __inline__ __device__ double atomicMin(double* address, double val) {
+	unsigned long long int* address_as_ull = (unsigned long long int*)address;
+	unsigned long long int old = *address, assumed;
+	assumed = *address_as_ull;
+	do {
+		assumed = old;
+		old = atomicCAS(address_as_ull, assumed, __double_as_longlong(val > __longlong_as_double(assumed) ?
+			__longlong_as_double(assumed) : val));
+	} while (assumed != old);
+	return __longlong_as_double(old);
 }
 
 /*
@@ -120,20 +136,33 @@ __global__ void computeHausdorffDistanceByGPU(Latlon* latlonP, int* textP, uint3
 					if (tempDist[k + tID * 16] < minDist)
 						minDist = tempDist[k + tID * 16];
 				}
-				if (minimunDist[tID % 16 + i] > minDist)
-					minimunDist[tID % 16 + i] = minDist;
+				
+				//if (minimunDist[tID % 16 + i] > minDist)
+				//	minimunDist[tID % 16 + i] = minDist;
+				atomicMin(&minimunDist[tID % 16 + i], minDist);
 			}
 			__syncthreads();
 		}
 	}
 	// 归并找最大值
-	for (int i = MAX_TRAJ_LENGTH/2+1; i >= 1; i = i >> 1) {
+	for (int i = MAX_TRAJ_LENGTH / 2 + 1; i >= 2; ) {
+
 		if (tID < i) {
 			minimunDist[tID] = minimunDist[tID] > minimunDist[tID + i] ? minimunDist[tID] : minimunDist[tID + i];
 		}
+		if (i <= 2) {
+			break;
+		}
+		else
+			i = i = (i >> 1) + 1;
+		if (tID == 0)
+			minimunDist[0] = minimunDist[0] > minimunDist[1] ? minimunDist[0] : minimunDist[1];
+		__syncthreads();
 	}
+
 	if (tID == 0)
 		maxDist1 = minimunDist[0];
+
 
 	// 计算q对p的距离
 	if (tID < pointNumQ)
@@ -164,23 +193,34 @@ __global__ void computeHausdorffDistanceByGPU(Latlon* latlonP, int* textP, uint3
 			// compute minimum, loop (may optimize to reduce)
 			// only use a warp
 			__syncthreads();
-			double minDist = 99999;
+			double minDist = 9999999;
 			if (tID / 16 == 0 && (tID % 16) < (pointNumQ - i)) {
 				for (int k = 0; k + j < pointNumP && k < 16; k++) {
 					if (tempDist[k + tID * 16] < minDist)
 						minDist = tempDist[k + tID * 16];
 				}
-				if (minimunDist[tID % 16 + i] > minDist)
-					minimunDist[tID % 16 + i] = minDist;
+				
+				atomicMin(&minimunDist[tID % 16 + i], minDist);
+				//if (minimunDist[tID % 16 + i] > minDist)
+				//	minimunDist[tID % 16 + i] = minDist;
 			}
 			__syncthreads();
 		}
 	}
 	// 归并找最大值
-	for (int i = MAX_TRAJ_LENGTH / 2 + 1; i >= 1; i = i >> 1) {
+	for (int i = MAX_TRAJ_LENGTH / 2+1; i >= 2; ) {
+
 		if (tID < i) {
 			minimunDist[tID] = minimunDist[tID] > minimunDist[tID + i] ? minimunDist[tID] : minimunDist[tID + i];
 		}
+		if (i <= 2) {
+			break;
+		}
+		else
+			i = i = (i >> 1) + 1;
+		if (tID == 0)
+			minimunDist[0] = minimunDist[0] > minimunDist[1] ? minimunDist[0] : minimunDist[1];
+		__syncthreads();
 	}
 	if (tID == 0)
 	{
