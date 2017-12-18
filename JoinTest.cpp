@@ -10,7 +10,7 @@ int JoinTest::init(vector<STTraj>* dataPtr, Grid * gridIndex)
 
 
 
-int JoinTest::defaultTest(double epsilon, double alpha, int setSize1, int setSize2)
+int JoinTest::defaultTest(double epsilon, double alpha, int setSize1, int setSize2, map<trajPair, double>& result)
 {
 	printf("starting...\n");
 
@@ -23,7 +23,7 @@ int JoinTest::defaultTest(double epsilon, double alpha, int setSize1, int setSiz
 	for (size_t i = 0; i < setSize2; i++) {
 		this->taskSet2.push_back(i);
 	}
-	map<trajPair, double> result;
+	
 	this->joinExhaustedCPU(epsilon, alpha, this->taskSet1, this->taskSet2, result);
 	timer.stop();
 	printf("Elapsed Time: %f ms\n", timer.elapse());
@@ -54,13 +54,7 @@ int JoinTest::joinExhaustedCPU(double epsilon, double alpha, vector<size_t> &joi
 
 int JoinTest::joinExhaustedGPU(double epsilon, double alpha, vector<size_t>& join_set_1, vector<size_t>& join_set_2, map<trajPair, double>& result)
 {
-	vector<STTraj> trajSetP, trajSetQ;
-	for (size_t i = 0; i < join_set_1.size(); i++) {
-		trajSetP.push_back(this->dataPtr->at(join_set_1[i]));
-	}
-	for (size_t i = 0; i < join_set_2.size(); i++) {
-		trajSetQ.push_back(this->dataPtr->at(join_set_2[i]));
-	}
+
 	CUDAwarmUp();
 	void* gpuAddr = GPUMalloc((size_t)300 * 1024 * 1024);
 	void* gpuAddr8byteAligned = GPUMalloc((size_t)300 * 1024 * 1024);
@@ -69,9 +63,25 @@ int JoinTest::joinExhaustedGPU(double epsilon, double alpha, vector<size_t>& joi
 	MyTimer timer;
 
 	timer.start();
+	for (size_t i = 0; i < join_set_1.size(); i += 255) {
+		for (size_t j = 0; j < join_set_2.size(); j += 255) {
+			map<trajPair, double> partialResult;
+			vector<STTraj> trajSetP, trajSetQ;
+			for (size_t i = 0; i < ((i + 255) > join_set_1.size() ? (join_set_1.size()) : (i + 255)); i++) {
+				trajSetP.push_back(this->dataPtr->at(join_set_1[i]));
+			}
+			for (size_t i = 0; i < ((i + 255) > join_set_2.size() ? (join_set_2.size()) : (i + 255)); i++) {
+				trajSetQ.push_back(this->dataPtr->at(join_set_2[i]));
+			}
+			calculateDistanceGPU(trajSetP, trajSetQ, partialResult, gpuAddr, gpuAddr8byteAligned, alpha, epsilon,
+				stream);
+			// insert new result
+			for (map<trajPair, double>::iterator it = partialResult.begin(); it != partialResult.end(); it++) {
+				result.insert(*it);
+			}
+		}
+	}
 
-	calculateDistanceGPU(trajSetP, trajSetQ, result, gpuAddr, gpuAddr8byteAligned, alpha, epsilon,
-		stream);
 	timer.stop();
 	printf("Elapsed Time(GPU Exhausted): %f ms\n", timer.elapse());
 	// calculateDistanceGPU(trajSetP, trajSetQ, result);

@@ -13,7 +13,7 @@ public:
 	Grid *gridIndex;
 	vector<size_t> taskSet1, taskSet2;
 	int init(vector<STTraj> *dataPtr, Grid *gridIndex);
-	int defaultTest(double epsilon, double alpha, int setSize1, int setSize2);
+	int defaultTest(double epsilon, double alpha, int setSize1, int setSize2, map<trajPair, double>& result);
 	// join operations...
 	int joinExhaustedCPU(double epsilon,
 		double alpha,

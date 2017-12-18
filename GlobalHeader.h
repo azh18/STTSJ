@@ -47,6 +47,6 @@ public:
 #define MAX_KEYWORD_NUM 200 //每个点包含keyword的最大值
 #define MAX_TRAJ_LENGTH 200
 #define THREAD_NUM 256
-#define BLOOM_FILTER_ERROR 0.1 // error tolerance of bloom filter
+#define BLOOM_FILTER_ERROR 0.2 // error tolerance of bloom filter
 
 typedef std::pair<size_t, size_t> trajPair;

@@ -126,7 +126,35 @@ int trajDB::buildBloomFilter(double errorTolerance)
 	return 0;
 }
 
-
+bool doubleEqual(double a, double b) {
+	if (a - b < 0.000001 || b - a < 0.000001)
+		return true;
+	else
+		return false;
+}
+bool compareResult(map<trajPair, double> &result1, map<trajPair, double>& result2,
+	vector<trajPair> &differentPair) {
+	bool isSame = true;
+	if (result1.size() != result2.size())
+		return false;
+	else {
+		for (map<trajPair, double>::iterator it = result1.begin(); it != result1.end(); it++) {
+			map<trajPair, double>::iterator it2 = result2.find(it->first);
+			if (it2 == result2.end())
+			{
+				isSame = false;
+				differentPair.push_back(it->first);
+			}
+			else {
+				if (!doubleEqual(it->second,it2->second)) {
+					isSame = false;
+					differentPair.push_back(it->first);
+				}
+			}
+		}
+	}
+	return isSame;
+}
 
 size_t trajDB::getAllPointNum()
 {
@@ -140,20 +168,25 @@ size_t trajDB::getAllPointNum()
 int trajDB::runDefaultTest(double epsilon, double alpha, int setSize1, int setSize2)
 {
 	// test exhausted join on CPU
-	// test.defaultTest(epsilon, alpha, setSize1, setSize2);
+	map<trajPair, double> CPUExaustedResult;
+	// test.defaultTest(epsilon, alpha, setSize1, setSize2, CPUExaustedResult);
 	// getchar();
 	// test exhausted join on GPU
 	JoinTest testExhaustGPU;
 	testExhaustGPU.init(&this->data, &this->gridIndex);
-	map<trajPair, double> testResult;
+	map<trajPair, double> GPUExaustedResult;
 	vector<size_t> joinsetP, joinsetQ;
 	for (size_t i = 0; i < setSize1; i++)
 		joinsetP.push_back(i);
 	for (size_t i = 0; i < setSize2; i++)
 		joinsetQ.push_back(i);
 
-	testExhaustGPU.joinExhaustedGPU(epsilon, alpha, joinsetP, joinsetQ, testResult);
-
+	testExhaustGPU.joinExhaustedGPU(epsilon, alpha, joinsetP, joinsetQ, GPUExaustedResult);
+	vector<trajPair> differentPairs;
+	if (compareResult(CPUExaustedResult, GPUExaustedResult,differentPairs))
+		printf("CPU and GPU get the same result.\n");
+	else
+		printf("The result of CPU and GPU is not the same!!!\n");
 	//vector<size_t> joinsetP1, joinsetQ1;
 	//joinsetP1.push_back(0);
 	//joinsetQ1.push_back(12);
@@ -162,6 +195,7 @@ int trajDB::runDefaultTest(double epsilon, double alpha, int setSize1, int setSi
 
 	// map<trajPair, double> tt;
 	// calculateDistanceGPU((this->data), (this->data), tt);
+
 	return 0;
 }
 
@@ -297,7 +331,7 @@ double trajDB::similarityGridProber(STPoint &p, set<size_t> &Pset, int probeIter
 			
 		if (dMin > epsilon)
 		{
-			printf("Traj %zd is filtered. spatial LB is:%f, textual LB is %f, overall LB is %f \n", tid,lowerboundSpatial, dTmin, dMin);
+			// printf("Traj %zd is filtered. spatial LB is:%f, textual LB is %f, overall LB is %f \n", tid,lowerboundSpatial, dTmin, dMin);
 			filteredTrajs.insert(tid);
 		}
 		else {
@@ -352,7 +386,7 @@ int trajDB::similarityGridFilter(STTraj & t, set<size_t>& Pset, double alpha, do
 		//		candTrajSet.insert(*it);
 		//}
 		probeIter++;
-		printf("\n an iteration finish.\n");
+		// printf("\n an iteration finish.\n");
 	}
 	// 结束后所有candTrajSet中的都是candidate，其他的都可以filter掉
 	//for (set<size_t>::iterator it = candTrajSet.begin(); it != candTrajSet.end(); it++) {
@@ -385,31 +419,38 @@ MBR trajDB::getMBRofAllData(MBR &mbr)
 int trajDB::testAllFunctions()
 {
 	// test similarityGridProber
-	set<size_t> candTrajs, filteredTrajs, Pset;
-	for (size_t i = 0; i < 99; i++)
-		Pset.insert(i);
-	vector<map<size_t, bool>> oneConstrainSatisfiedTable(1);
-	for (set<size_t>::iterator it = Pset.begin(); it != Pset.end(); it++) {
-		oneConstrainSatisfiedTable[0][*it] = false;
-	}
-	map<size_t, int> remainPointNeedToSatisfyArray;
-	for (set<size_t>::iterator it = Pset.begin(); it != Pset.end(); it++) {
-		remainPointNeedToSatisfyArray[*it] = 1;
-	}
-	this->similarityGridProber(STPoint(39.12, -75.95), Pset, 2, 0.8, 0.15, candTrajs, filteredTrajs,
-		oneConstrainSatisfiedTable, remainPointNeedToSatisfyArray, 0, 1);
-	printf("test SimilarityGridProber:\n");
-	for(size_t i=0;i<candTrajs.size();i++)
-		printf("%zd,", *(candTrajs.begin()));
-	printf("\n");
+	//set<size_t> candTrajs, filteredTrajs, Pset;
+	//for (size_t i = 0; i < 99; i++)
+	//	Pset.insert(i);
+	//vector<map<size_t, bool>> oneConstrainSatisfiedTable(1);
+	//for (set<size_t>::iterator it = Pset.begin(); it != Pset.end(); it++) {
+	//	oneConstrainSatisfiedTable[0][*it] = false;
+	//}
+	//map<size_t, int> remainPointNeedToSatisfyArray;
+	//for (set<size_t>::iterator it = Pset.begin(); it != Pset.end(); it++) {
+	//	remainPointNeedToSatisfyArray[*it] = 1;
+	//}
+	//this->similarityGridProber(STPoint(39.12, -75.95), Pset, 2, 0.8, 0.15, candTrajs, filteredTrajs,
+	//	oneConstrainSatisfiedTable, remainPointNeedToSatisfyArray, 0, 1);
+
+
+	//printf("test SimilarityGridProber:\n");
+	//for(size_t i=0;i<candTrajs.size();i++)
+	//	printf("%zd,", *(candTrajs.begin()));
+	//printf("\n");
 	
 	//test similarity filter
 	// result: lower bound is too loose
 	set<size_t> Qset;
 	vector<size_t> candTrajSet;
-	for (size_t i = 0; i < 10000; i++)
+	for (size_t i = 0; i < 1280; i++)
 		Qset.insert(i);
-	this->similarityGridFilter(this->data[0], Qset, 0.5, 0.55, candTrajSet);
+	MyTimer timer;
+	timer.start();
+	for(size_t i=0;i<1280;i++)
+		this->similarityGridFilter(this->data[i], Qset, 0.5, 0.55, candTrajSet);
+	timer.stop();
+	printf("Filter spend %f ms.\n", timer.elapse());
 	printf("Total:%zd,Filtered:%zd\n", Qset.size(), candTrajSet.size());
 	//printf("Here are all candidate trajectories:");
 	//for (size_t i = 0; i < candTrajSet.size(); i++) {
