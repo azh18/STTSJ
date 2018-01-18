@@ -92,20 +92,8 @@ __global__ void computeHausdorffDistanceByGPUPointLevel(Latlon* latlonP, int* te
 	float *HausdorffResult) {
 	int bID = blockIdx.x;
 	int tID = threadIdx.x;
-	//__shared__ GPUHashInfoTable task;
-	//__shared__ uint32_t pointIdxP, pointNumP, pointIdxQ, pointNumQ;
-	//if (tID == 0) {
-	//	task = taskInfo[bID];
-	//	pointIdxP = task.latlonIdxP;
-	//	pointNumP = task.pointNumP;
-	//	pointIdxQ = task.latlonIdxQ;
-	//	pointNumQ = task.pointNumQ;
-	//}
-	GPUHashInfoTable task = taskInfo[bID];
-	uint32_t pointIdxP = task.latlonIdxP;
-	uint32_t pointNumP = task.pointNumP;
-	uint32_t pointIdxQ = task.latlonIdxQ;
-	uint32_t pointNumQ = task.pointNumQ;
+	__shared__ GPUHashInfoTable task;
+	__shared__ uint32_t pointIdxP, pointNumP, pointIdxQ, pointNumQ;
 
 	// for each thread, get addr and compute distance
 	// if traj length is larger than 16, use for loop to process
@@ -113,11 +101,24 @@ __global__ void computeHausdorffDistanceByGPUPointLevel(Latlon* latlonP, int* te
 	__shared__ float minimunDist[MAX_TRAJ_LENGTH+2]; // one more is because easy to reduce maximum
 	__shared__ float maxDist1;
 
+	if (tID == 0) {
+		task = taskInfo[bID];
+		pointIdxP = task.latlonIdxP;
+		pointNumP = task.pointNumP;
+		pointIdxQ = task.latlonIdxQ;
+		pointNumQ = task.pointNumQ;
+	}
+	__syncthreads();
+	// GPUHashInfoTable task = taskInfo[bID];
+	//uint32_t pointIdxP = task.latlonIdxP;
+	//uint32_t pointNumP = task.pointNumP;
+	//uint32_t pointIdxQ = task.latlonIdxQ;
+	//uint32_t pointNumQ = task.pointNumQ;
+
 	if (tID < pointNumP)
 		minimunDist[tID] = 9999.0;
 	else if (tID < MAX_TRAJ_LENGTH + 2)
 		minimunDist[tID] = -1.0;	
-	__syncthreads();
 	float latP, latQ, lonP, lonQ;
 	uint32_t textStartIdxP, textStartIdxQ;
 	uint32_t keywordNumP, keywordNumQ;
@@ -136,8 +137,8 @@ __global__ void computeHausdorffDistanceByGPUPointLevel(Latlon* latlonP, int* te
 				textStartIdxQ = textIdxQArray[pointIdxQ + tID % 8 + j];
 				keywordNumQ = wordNumQ[pointIdxQ + tID % 8 + j];
 				// calculate distance
-				//float TDist = 0;
-				float TDist = TDistance(&textP[textStartIdxP], &textQ[textStartIdxQ], keywordNumP, keywordNumQ);
+				float TDist = 0;
+				//float TDist = TDistance(&textP[textStartIdxP], &textQ[textStartIdxQ], keywordNumP, keywordNumQ);
 				float SDist = SDistance(latQ, lonQ, latP, lonP);
 				// dist = S*alpha + T*(1-alpha)
 				tempDist[tID] = SDist * alpha + TDist * (1 - alpha);
@@ -200,8 +201,8 @@ __global__ void computeHausdorffDistanceByGPUPointLevel(Latlon* latlonP, int* te
 				textStartIdxP = textIdxPArray[pointIdxP + tID % 8 + j];
 				keywordNumP = wordNumP[pointIdxP + tID % 8 + j];
 				// calculate distance
-				//float TDist = 0;
-				float TDist = TDistance(&textQ[textStartIdxQ], &textP[textStartIdxP], keywordNumQ, keywordNumP);
+				float TDist = 0;
+				//float TDist = TDistance(&textQ[textStartIdxQ], &textP[textStartIdxP], keywordNumQ, keywordNumP);
 				float SDist = SDistance(latQ, lonQ, latP, lonP);
 				// dist = S*alpha + T*(1-alpha)
 				tempDist[tID] = SDist * alpha + TDist * (1 - alpha);
