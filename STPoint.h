@@ -3,16 +3,16 @@
 class STPoint
 {
 public:
-	double lat;
-	double lon;
+	float lat;
+	float lon;
 	std::vector<int> keywords;
-	STPoint(double lat, double lon, std::vector<int> keywords);
-	STPoint(double lat, double lon);
+	STPoint(float lat, float lon, std::vector<int> keywords);
+	STPoint(float lat, float lon);
 	STPoint();
 	size_t getKeywordSize();
-	double STdistance(STPoint &p, double alpha); // wait for construct
-	double Sdistance(STPoint &p); //wait for construct
-	double Tdistance(STPoint &p); // wait for construct
+	float STdistance(STPoint &p, float alpha); // wait for construct
+	float Sdistance(STPoint &p); //wait for construct
+	float Tdistance(STPoint &p); // wait for construct
 	~STPoint();
 };
 

@@ -11,14 +11,14 @@ inline bool wordSearch(int wordIdx, vector<int> &wordPool) {
 	return false;
 }
 
-STPoint::STPoint(double lat, double lon, std::vector<int> keywords)
+STPoint::STPoint(float lat, float lon, std::vector<int> keywords)
 {
 	this->lat = lat;
 	this->lon = lon;
 	this->keywords = keywords;
 }
 
-STPoint::STPoint(double lat, double lon)
+STPoint::STPoint(float lat, float lon)
 {
 	this->lat = lat;
 	this->lon = lon;
@@ -35,36 +35,58 @@ size_t STPoint::getKeywordSize()
 	return this->keywords.size();
 }
 
-double STPoint::STdistance(STPoint & p, double alpha)
+float STPoint::STdistance(STPoint & p, float alpha)
 {
-
+	// return (this->Sdistance(p)*alpha);
 	return (this->Sdistance(p)*alpha + this->Tdistance(p)*(1 - alpha));
 }
 
-double STPoint::Sdistance(STPoint & p)
+float STPoint::Sdistance(STPoint & p)
 {
-	double lat_dis = this->lat - p.lat;
-	double lon_dis = this->lon - p.lon;
-	return sqrt(lat_dis*lat_dis + lon_dis*lon_dis) / MAX_DIST;
+	float lat_dis = this->lat - p.lat;
+	float lon_dis = this->lon - p.lon;
+	return sqrt(lat_dis*lat_dis + lon_dis*lon_dis) / (float)MAX_DIST;
 }
 
-double STPoint::Tdistance(STPoint & p)
+float STPoint::Tdistance(STPoint & p)
 {
-	double jaccard;
-	set<int> words;
-	for (size_t i = 0; i < this->keywords.size(); i++) {
-		words.insert(this->keywords[i]);
+	// float jaccard;
+	//set<int> words;
+	//for (size_t i = 0; i < this->keywords.size(); i++) {
+	//	words.insert(this->keywords[i]);
+	//}
+	//for (size_t i = 0; i < p.keywords.size(); i++) {
+	//	words.insert(p.keywords[i]);
+	//}
+	//int intersectSize = 0;
+	//for (set<int>::iterator it = words.begin(); it != words.end(); it++) {
+	//	if (wordSearch(*it, this->keywords) && wordSearch(*it, p.keywords))
+	//		intersectSize++;
+	//}
+	//jaccard = (float)intersectSize / words.size();
+	//return (1.0 - jaccard);
+
+	int tempWords[MAX_KEYWORD_NUM]; uint32_t intersect_size = 0, union_size = 0;
+	for (uint32_t idxW = 0; idxW < this->keywords.size(); idxW++) {
+		tempWords[idxW] = this->keywords[idxW];
+		union_size++;
 	}
-	for (size_t i = 0; i < p.keywords.size(); i++) {
-		words.insert(p.keywords[i]);
+	for (uint32_t idxW = 0; idxW < p.keywords.size(); idxW++) {
+		bool haveSame = false;
+		for (uint32_t idxW1 = 0; idxW1 < this->keywords.size(); idxW1++) {
+			if (tempWords[idxW1] == p.keywords[idxW]) {
+				// intersect_size++;
+				haveSame = true;
+				break;
+			}
+		}
+		if (haveSame)
+			intersect_size++;
+		else
+			union_size++;
 	}
-	int intersectSize = 0;
-	for (set<int>::iterator it = words.begin(); it != words.end(); it++) {
-		if (wordSearch(*it, this->keywords) && wordSearch(*it, p.keywords))
-			intersectSize++;
-	}
-	jaccard = (double)intersectSize / words.size();
-	return (1.0 - jaccard);
+	return (float)1.0 - (float)intersect_size / union_size;
+
 }
 
 

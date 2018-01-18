@@ -13,17 +13,17 @@ public:
 	vector<Cell> cells;
 	MBR allSpaceBound;
 	int gridLatScale, gridLonScale;
-	double resl_lat, resl_lon;
+	float resl_lat, resl_lon;
 	 
 	Grid();
 	// unittest
 	int testAllMethods();
 	
 	// functions
-	int initial(const MBR &overallBound, double resl_lat, double resl_lon);
+	int initial(const MBR &overallBound, float resl_lat, float resl_lon);
 	int addTrajIntoGrid(const STTraj &traj);
-	int getCellIDFromCoordinate(double lat, double lon);
-	double getSurroundCellID(STPoint &p, int probeIter, int cellid, vector<int> &cells);
+	int getCellIDFromCoordinate(float lat, float lon);
+	float getSurroundCellID(const STPoint &p, int probeIter, int cellid, vector<int> &cells);
 	int getTrajsOverlappedCell(int cellid, vector<size_t> &trajs);
 
 

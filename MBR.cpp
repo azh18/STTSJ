@@ -6,7 +6,7 @@ MBR::MBR()
 {
 }
 
-MBR::MBR(double lat1, double lat2, double lon1, double lon2)
+MBR::MBR(float lat1, float lat2, float lon1, float lon2)
 {
 	this->lat1 = lat1;
 	this->lat2 = lat2;

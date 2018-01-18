@@ -5,6 +5,7 @@
 #include "Cell.h"
 #include "Grid.h"
 #include "JoinTest.h"
+#include "MBR.h"
 
 using std::vector;
 using std::map;
@@ -23,21 +24,21 @@ public:
 	size_t loadDictFromFile(string fileName);
 	size_t loadTrajFromFile(string fileName);
 	int cleanOutsideData();
-	int buildGridIndex(double resl_lat, double resl_lon);
-	int buildBloomFilter(double errorTolerance);
+	int buildGridIndex(float resl_lat, float resl_lon);
+	int buildBloomFilter(float errorTolerance);
 	size_t getAllPointNum();
-	int runDefaultTest(double epsilon, double alpha, int setSize1, int setSize2);
+	int runDefaultTest(float epsilon, float alpha, int setSize1, int setSize2);
 	int getDatasetInformation();
-	double similarityGridProber(STPoint &p, set<size_t> &Pset, int probeIter, double alpha, double epsilon,
+	float similarityGridProber(STPoint &p, set<size_t> &Pset, int probeIter, float alpha, float epsilon,
 		set<size_t> &candTrajs, set<size_t> &filteredTrajs,
 		vector<map<size_t, bool>> &probedTable, map<size_t, int> &probedTimeArray, int pi,
 		int textualLBType);
 	int similarityGridFilter(STTraj &t, set<size_t> &Pset, 
-		double alpha, double epsilon, 
+		float alpha, float epsilon, 
 		vector<size_t> &candTraj);
 
 	MBR getMBRofAllData();
-	MBR getMBRofAllData(MBR &mbr);
+	MBR getMBRofAllData(const MBR &mbr);
 
 	//unit test
 	int testAllFunctions();

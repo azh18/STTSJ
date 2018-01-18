@@ -4,7 +4,7 @@
 using std::set;
 using std::map;
 
-double STTraj::calculateSimilarity(STTraj traj2)
+float STTraj::calculateSimilarity(STTraj traj2)
 {
 	return 0.0;
 }
@@ -57,17 +57,17 @@ int STTraj::unitTestForDist() {
 	return 0;
 }
 
-double STTraj::HausdorffDistance(STTraj & traj, double alpha)
+float STTraj::HausdorffDistance(STTraj & traj, float alpha)
 {
-	double hausd1, hausd2;
+	float hausd1, hausd2;
 	// compute this to traj
-	double maxD = 0;
-	double maxDSpatial = 0, maxDTextual = 0;
+	float maxD = 0;
+	float maxDSpatial = 0, maxDTextual = 0;
 	for (int i = 0; i < this->points.size(); i++) {
-		double minD = 999990; 
-		double minDSpatial = 99990, minDTextual = 99990;
+		float minD = 999990; 
+		float minDSpatial = 99990, minDTextual = 99990;
 		for (int j = 0; j < traj.points.size(); j++) {
-			double distance = this->points[i].STdistance(traj.points[j], alpha);
+			float distance = this->points[i].STdistance(traj.points[j], alpha);
 			if (distance < minD) {
 				minD = distance;
 #ifdef DISPLAY_SPATIAL_TEXTUAL
@@ -86,17 +86,17 @@ double STTraj::HausdorffDistance(STTraj & traj, double alpha)
 	}
 	hausd1 = maxD;
 #ifdef DISPLAY_SPATIAL_TEXTUAL
-	double maxDSpatial1, maxDTextual1;
+	float maxDSpatial1, maxDTextual1;
 	maxDSpatial1 = maxDSpatial;
 	maxDTextual1 = maxDTextual;
 #endif // DISPLAY_SPATIAL_TEXTUAL
 	// compute traj to this
 	maxD = 0; maxDSpatial = 0; maxDTextual = 0;
 	for (int i = 0; i < traj.points.size(); i++) {
-		double minD = 999990; 
-		double minDSpatial = 99990, minDTextual = 99990;
+		float minD = 999990; 
+		float minDSpatial = 99990, minDTextual = 99990;
 		for (int j = 0; j < this->points.size(); j++) {
-			double distance = traj.points[i].STdistance(this->points[j], alpha);
+			float distance = traj.points[i].STdistance(this->points[j], alpha);
 			if (distance < minD)
 			{
 				minD = distance;
@@ -116,7 +116,7 @@ double STTraj::HausdorffDistance(STTraj & traj, double alpha)
 	}
 	hausd2 = maxD;
 #ifdef DISPLAY_SPATIAL_TEXTUAL
-	double maxDSpatial2, maxDTextual2;
+	float maxDSpatial2, maxDTextual2;
 	maxDSpatial2 = maxDSpatial;
 	maxDTextual2 = maxDTextual;
 #endif // DISPLAY_SPATIAL_TEXTUAL
@@ -136,7 +136,7 @@ double STTraj::HausdorffDistance(STTraj & traj, double alpha)
 	}
 }
 
-int STTraj::generateBloomFilter(double errorTole)
+int STTraj::generateBloomFilter(float errorTole)
 {
 	// compute keyword num
 	set<int> keywordIntersect;

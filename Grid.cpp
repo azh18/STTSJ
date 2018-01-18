@@ -10,8 +10,8 @@ int Grid::testAllMethods()
 {
 	printf("Test getCellIDFromCoordinate:\n");
 	printf("Input: scan from cell 1 to cell n\n");
-	for (double lat = 39.05; lat < 42; lat += 0.1) {
-		for (double lon = -75.95; lon < -72; lon += 0.1) {
+	for (float lat = (float)39.05; lat < 42; lat += (float)0.1) {
+		for (float lon = (float)-75.95; lon < -72; lon += (float)0.1) {
 			printf("cell id=%d\t", this->getCellIDFromCoordinate(lat, lon));
 		}
 	}
@@ -19,7 +19,7 @@ int Grid::testAllMethods()
 	printf("Input: p(39.12,-75.95) at cell(1,0), and probe = 2, so surround=");
 	printf("(3,0),(3,1),(3,2),(2,2),(1,2),(0,2), and minDist = 0.15");
 	vector<int> surroundCells;
-	double minDist = this->getSurroundCellID(STPoint(39.12, -75.95), 2, this->gridLonScale, surroundCells);
+	float minDist = this->getSurroundCellID(STPoint((float)39.12, (float)-75.95), 2, this->gridLonScale, surroundCells);
 	printf("output cells:");
 	for (int i = 0; i < surroundCells.size(); i++) {
 		printf("(%d,%d),", surroundCells[i] / this->gridLonScale, surroundCells[i] % this->gridLonScale);
@@ -30,7 +30,7 @@ int Grid::testAllMethods()
 	printf("Input: p(41.98, -71.95) at cell(29,40), and probe = 2, so surround=");
 	printf("(29,37),(28,27),(27,37),(26,37),(26,38),(26,39), and minDist = 0.15");
 	surroundCells.clear();
-	minDist = this->getSurroundCellID(STPoint(41.98, -71.95), 2, this->getCellIDFromCoordinate(41.98, -71.95), surroundCells);
+	minDist = this->getSurroundCellID(STPoint((float)41.98, (float)-71.95), 2, this->getCellIDFromCoordinate((float)41.98, (float)-71.95), surroundCells);
 	printf("output cells:");
 	for (int i = 0; i < surroundCells.size(); i++) {
 		printf("(%d,%d),", surroundCells[i] / this->gridLonScale, surroundCells[i] % this->gridLonScale);
@@ -40,7 +40,7 @@ int Grid::testAllMethods()
 	return 0;
 }
 
-int Grid::initial(const MBR & overallBound, double resl_lat, double resl_lon)
+int Grid::initial(const MBR & overallBound, float resl_lat, float resl_lon)
 {
 	this->allSpaceBound = overallBound;
 	this->resl_lat = resl_lat;
@@ -74,7 +74,7 @@ int Grid::addTrajIntoGrid(const STTraj & traj)
 }
 
 // test pass
-int Grid::getCellIDFromCoordinate(double lat, double lon)
+int Grid::getCellIDFromCoordinate(float lat, float lon)
 {
 	int lat_idx = (int)((lat - this->allSpaceBound.lat1) / this->resl_lat);
 	int lon_idx = (int)((lon - this->allSpaceBound.lon1) / this->resl_lon);
@@ -86,7 +86,7 @@ int Grid::getCellIDFromCoordinate(double lat, double lon)
 // return the maximum distance of probeIter
 // unit test pass
 // if edge is over the overall MBR, this edge will be ignored. (guarantee LB is growing)
-double Grid::getSurroundCellID(STPoint &p, int probeIter, int cellid, vector<int> &cells)
+float Grid::getSurroundCellID(const STPoint &p, int probeIter, int cellid, vector<int> &cells)
 {
 	int lat_idx = cellid / this->gridLonScale;
 	int lon_idx = cellid % this->gridLonScale;
@@ -144,7 +144,7 @@ double Grid::getSurroundCellID(STPoint &p, int probeIter, int cellid, vector<int
 		cells.push_back(largestLatIdx * this->gridLonScale + largestLonIdx);
 	}
 	// put edge and compute lowerbound of spatial distance
-	double spatialDistanceMin = 9999;
+	float spatialDistanceMin = 9999;
 	// up edge
 	if (smallestLatIdx >= 0) {
 		for (int i = (smallestLonIdx >= 0 ? smallestLonIdx + 1 : 0);

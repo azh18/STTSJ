@@ -12,6 +12,6 @@ void CUDAwarmUp();
 void* GPUMalloc(size_t byteNum);
 int calculateDistanceGPU(vector<STTraj> &trajSetP,
 	vector<STTraj> &trajSetQ,
-	map<trajPair, double> &result,
-	void* baseGPUAddr, void* baseGPUAddr8byteAligned, double alpha, double epsilon,
-	cudaStream_t &stream);
+	map<trajPair, float> &result,
+	void* baseGPUAddr, void* baseGPUAddr8byteAligned, float alpha, float epsilon,
+	cudaStream_t &stream, int parallelLevel);

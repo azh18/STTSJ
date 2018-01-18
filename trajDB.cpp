@@ -58,8 +58,8 @@ size_t trajDB::loadTrajFromFile(string fileName)
 			size_t latIdx = 0;
 			size_t lonIdx = pointStr.find(',') + 1;
 			size_t timeIdx = pointStr.find(',', lonIdx) + 1;
-			double lat = std::atof(pointStr.substr(latIdx, lonIdx - latIdx - 1).c_str());
-			double lon = std::atof(pointStr.substr(lonIdx, timeIdx - lonIdx - 1).c_str());
+			float lat = (float)std::atof(pointStr.substr(latIdx, lonIdx - latIdx - 1).c_str());
+			float lon = (float)std::atof(pointStr.substr(lonIdx, timeIdx - lonIdx - 1).c_str());
 			size_t nextKeyWord = pointStr.find(',', keywordIdx);
 			vector<int> keywords;
 			while (nextKeyWord != pointStr.npos) {
@@ -103,10 +103,25 @@ int trajDB::cleanOutsideData()
 				iter = this->data[i].points.erase(iter);
 		}
 	}
+
+	// clean empty trajectory
+	vector<STTraj>::iterator emptyChecker;
+	for (emptyChecker = this->data.begin(); emptyChecker != this->data.end();) {
+		if (emptyChecker->getLength() == 0) {
+			emptyChecker = this->data.erase(emptyChecker);
+		}
+		else {
+			emptyChecker++;
+		}
+	}
+	size_t id = 0;
+	for (emptyChecker = this->data.begin(); emptyChecker != this->data.end();emptyChecker++) {
+		emptyChecker->trajID = id++;
+	}
 	return 0;
 }
 
-int trajDB::buildGridIndex(double resl_lat, double resl_lon)
+int trajDB::buildGridIndex(float resl_lat, float resl_lon)
 {
 	// generate Grid using Grid()
 	this->gridIndex.initial(this->allDataMBR, resl_lat, resl_lon);
@@ -118,7 +133,7 @@ int trajDB::buildGridIndex(double resl_lat, double resl_lon)
 	return 0;
 }
 
-int trajDB::buildBloomFilter(double errorTolerance)
+int trajDB::buildBloomFilter(float errorTolerance)
 {
 	for (int i = 0; i < this->data.size(); i++) {
 		this->data[i].generateBloomFilter(errorTolerance);
@@ -126,27 +141,27 @@ int trajDB::buildBloomFilter(double errorTolerance)
 	return 0;
 }
 
-bool doubleEqual(double a, double b) {
+bool floatEqual(float a, float b) {
 	if (a - b < 0.000001 || b - a < 0.000001)
 		return true;
 	else
 		return false;
 }
-bool compareResult(map<trajPair, double> &result1, map<trajPair, double>& result2,
+bool compareResult(map<trajPair, float> &result1, map<trajPair, float>& result2,
 	vector<trajPair> &differentPair) {
 	bool isSame = true;
 	if (result1.size() != result2.size())
 		return false;
 	else {
-		for (map<trajPair, double>::iterator it = result1.begin(); it != result1.end(); it++) {
-			map<trajPair, double>::iterator it2 = result2.find(it->first);
+		for (map<trajPair, float>::iterator it = result1.begin(); it != result1.end(); it++) {
+			map<trajPair, float>::iterator it2 = result2.find(it->first);
 			if (it2 == result2.end())
 			{
 				isSame = false;
 				differentPair.push_back(it->first);
 			}
 			else {
-				if (!doubleEqual(it->second,it2->second)) {
+				if (!floatEqual(it->second,it2->second)) {
 					isSame = false;
 					differentPair.push_back(it->first);
 				}
@@ -165,16 +180,16 @@ size_t trajDB::getAllPointNum()
 	return totalNum;
 }
 
-int trajDB::runDefaultTest(double epsilon, double alpha, int setSize1, int setSize2)
+int trajDB::runDefaultTest(float epsilon, float alpha, int setSize1, int setSize2)
 {
 	// test exhausted join on CPU
-	map<trajPair, double> CPUExaustedResult;
-	// test.defaultTest(epsilon, alpha, setSize1, setSize2, CPUExaustedResult);
-	// getchar();
+	map<trajPair, float> CPUExaustedResult;
+	test.defaultTest(epsilon, alpha, setSize1, setSize2, CPUExaustedResult);
+	getchar();
 	// test exhausted join on GPU
 	JoinTest testExhaustGPU;
 	testExhaustGPU.init(&this->data, &this->gridIndex);
-	map<trajPair, double> GPUExaustedResult;
+	map<trajPair, float> GPUExaustedResult;
 	vector<size_t> joinsetP, joinsetQ;
 	for (size_t i = 0; i < setSize1; i++)
 		joinsetP.push_back(i);
@@ -193,7 +208,7 @@ int trajDB::runDefaultTest(double epsilon, double alpha, int setSize1, int setSi
 	//testExhaustGPU.joinExhaustedGPU(epsilon, alpha, joinsetP1, joinsetQ1, testResult);
 
 
-	// map<trajPair, double> tt;
+	// map<trajPair, float> tt;
 	// calculateDistanceGPU((this->data), (this->data), tt);
 
 	return 0;
@@ -252,7 +267,7 @@ int trajDB::getDatasetInformation()
 	0: use original Jaccard max
 	1: use lowerbound based on bloom filter
 */
-double trajDB::similarityGridProber(STPoint &p, set<size_t> &Pset, int probeIter, double alpha, double epsilon,
+float trajDB::similarityGridProber(STPoint &p, set<size_t> &Pset, int probeIter, float alpha, float epsilon,
 	set<size_t>& candTrajs, set<size_t>& filteredTrajs,
 	vector<map<size_t, bool>> &probedTable, map<size_t, int> &probedTimeArray, int pi,
 	int textualLBType)
@@ -261,7 +276,7 @@ double trajDB::similarityGridProber(STPoint &p, set<size_t> &Pset, int probeIter
 	int cid_of_p = this->gridIndex.getCellIDFromCoordinate(p.lat, p.lon);
 	// find cells should be probed according to probeIter
 	vector<int> probedCellIds;
-	double lowerboundSpatial = this->gridIndex.getSurroundCellID(p, probeIter, cid_of_p, probedCellIds);
+	float lowerboundSpatial = this->gridIndex.getSurroundCellID(p, probeIter, cid_of_p, probedCellIds);
 	lowerboundSpatial /= MAX_DIST; // normalized
 	if (lowerboundSpatial < 0.000001 && probeIter >0) {
 		// 说明probe已经超出范围，不必再继续
@@ -295,10 +310,10 @@ double trajDB::similarityGridProber(STPoint &p, set<size_t> &Pset, int probeIter
 	for (set<size_t>::iterator it = probedTrajs.begin(); it != probedTrajs.end(); it++) {
 		size_t tid = *it;
 		// find dT(min)
-		double jaccardMax = 0;
+		float jaccardMax = 0;
 		if (textualLBType == 0) {
 			for (size_t i = 0; i < this->data[tid].points.size(); i++) {
-				double tempJaccardMax = (double)(min(p.keywords.size(), this->data[tid].points[i].keywords.size())) /
+				float tempJaccardMax = (float)(min(p.keywords.size(), this->data[tid].points[i].keywords.size())) /
 					max(p.keywords.size(), this->data[tid].points[i].keywords.size());
 				if (tempJaccardMax > jaccardMax)
 					jaccardMax = tempJaccardMax;
@@ -313,21 +328,21 @@ double trajDB::similarityGridProber(STPoint &p, set<size_t> &Pset, int probeIter
 			// find minimum union size
 			int minimalUnionSize = 0;
 			for (int i = 0; i < this->data[tid].points.size(); i++) {
-				minimalUnionSize = this->data[tid].points[i].keywords.size() > minimalUnionSize ?
-					this->data[tid].points[i].keywords.size() : minimalUnionSize;
+				minimalUnionSize = (int)this->data[tid].points[i].keywords.size() > minimalUnionSize ?
+					(int)this->data[tid].points[i].keywords.size() : minimalUnionSize;
 			}
-			minimalUnionSize += p.keywords.size() - maximalMatchNum;
+			minimalUnionSize += (int)p.keywords.size() - maximalMatchNum;
 			if (minimalUnionSize == 0) {
 				jaccardMax = 1;
 			}
 			else
-				jaccardMax = maximalMatchNum / minimalUnionSize;
+				jaccardMax = (float)maximalMatchNum / minimalUnionSize;
 		}
 		else {
 			std::cerr << "have not define this textualLB type!!!" << std::endl;
 		}
-		double dTmin = 1 - jaccardMax;
-		double dMin = alpha * lowerboundSpatial + (1 - alpha)*dTmin;
+		float dTmin = 1 - jaccardMax;
+		float dMin = alpha * lowerboundSpatial + (1 - alpha)*dTmin;
 			
 		if (dMin > epsilon)
 		{
@@ -346,7 +361,7 @@ double trajDB::similarityGridProber(STPoint &p, set<size_t> &Pset, int probeIter
 
 // return a set of trajID as candidate set
 // wait for unit test
-int trajDB::similarityGridFilter(STTraj & t, set<size_t>& Pset, double alpha, double epsilon, vector<size_t>& candTraj)
+int trajDB::similarityGridFilter(STTraj & t, set<size_t>& Pset, float alpha, float epsilon, vector<size_t>& candTraj)
 {
 	// maintain a table to mark whether for point i, we have known mind(i,j)<epsilon
 	vector<map<size_t, bool>> oneConstrainSatisfiedTable(t.points.size());
@@ -362,15 +377,15 @@ int trajDB::similarityGridFilter(STTraj & t, set<size_t>& Pset, double alpha, do
 
 	// for each p in t, probe new trajs
 	set<size_t> candTrajSet, filteredTrajSet; // two sets of trajs which is candidate or filtered
-	double lowerBoundSpatial = 0;
+	float lowerBoundSpatial = 0;
 	int probeIter = 0;
 	// start filter phase, until all trajs are distributed in cand and filter, or none of traj can be in cand
 	while (candTrajSet.size() + filteredTrajSet.size() < Pset.size() && lowerBoundSpatial <= epsilon / alpha) {
 		// calculate the lowerboundSpatial now
-		lowerBoundSpatial = 9999.9;
+		lowerBoundSpatial = (float)9999.9;
 		for (size_t i = 0; i < t.points.size(); i++) {
 			// for this point, invoke probe to update candTraj and filteredTraj
-			double tempLB = this->similarityGridProber(t.points[i], Pset, probeIter,
+			float tempLB = this->similarityGridProber(t.points[i], Pset, probeIter,
 				alpha, epsilon, candTrajSet, filteredTrajSet,
 				oneConstrainSatisfiedTable, remainPointNeedToSatisfyArray, (int)i, 0); // need to be adapted
 			if (tempLB < 0) {
@@ -401,7 +416,7 @@ int trajDB::similarityGridFilter(STTraj & t, set<size_t>& Pset, double alpha, do
 
 MBR trajDB::getMBRofAllData()
 {
-	double minx=200, miny=200, maxx=-200, maxy=-200;
+	float minx=200, miny=200, maxx=-200, maxy=-200;
 	for (size_t i = 0; i < this->data.size(); i++) {
 		for (size_t j = 0; j < this->data[i].points.size(); j++) {
 			j = 0;
@@ -410,7 +425,7 @@ MBR trajDB::getMBRofAllData()
 	return MBR(minx, miny, maxx, maxy);
 }
 
-MBR trajDB::getMBRofAllData(MBR &mbr)
+MBR trajDB::getMBRofAllData(const MBR &mbr)
 {
 	this->allDataMBR = mbr;
 	return mbr;
@@ -448,7 +463,7 @@ int trajDB::testAllFunctions()
 	MyTimer timer;
 	timer.start();
 	for(size_t i=0;i<1280;i++)
-		this->similarityGridFilter(this->data[i], Qset, 0.5, 0.55, candTrajSet);
+		this->similarityGridFilter(this->data[i], Qset, (float)0.5, (float)0.55, candTrajSet);
 	timer.stop();
 	printf("Filter spend %f ms.\n", timer.elapse());
 	printf("Total:%zd,Filtered:%zd\n", Qset.size(), candTrajSet.size());
