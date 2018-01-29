@@ -83,7 +83,10 @@ __device__ inline float TDistance(int* word1, int* word2, uint32_t wordNum1, uin
 		else
 			union_size++;
 	}
-	return 1.0 - (float)intersect_size / union_size;
+	if (union_size == 0)
+		return 0;
+	else // do not divide zero!
+		return 1.0 - (float)intersect_size / union_size;
 }
 
 __global__ void computeHausdorffDistanceByGPUPointLevel(Latlon* latlonP, int* textP, uint32_t* textIdxPArray,

@@ -23,7 +23,7 @@ public:
 	trajDB();
 	size_t loadDictFromFile(string fileName);
 	size_t loadTrajFromFile(string fileName);
-	int cleanOutsideData();
+	int cleanOutsideData(int maxDataSize);
 	int buildGridIndex(float resl_lat, float resl_lon);
 	int buildBloomFilter(float errorTolerance);
 	size_t getAllPointNum();
@@ -32,7 +32,7 @@ public:
 	float similarityGridProber(STPoint &p, set<size_t> &Pset, int probeIter, float alpha, float epsilon,
 		set<size_t> &candTrajs, set<size_t> &filteredTrajs,
 		vector<map<size_t, bool>> &probedTable, map<size_t, int> &probedTimeArray, int pi,
-		int textualLBType);
+		int textualLBType, size_t pTrajID);
 	int similarityGridFilter(STTraj &t, set<size_t> &Pset, 
 		float alpha, float epsilon, 
 		vector<size_t> &candTraj);
@@ -41,7 +41,7 @@ public:
 	MBR getMBRofAllData(const MBR &mbr);
 
 	//unit test
-	int testAllFunctions();
+	int testAllFunctions(float alpha, float epsilon);
 
 
 

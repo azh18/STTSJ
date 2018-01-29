@@ -2,6 +2,7 @@
 
 using std::set;
 using std::vector;
+extern FILE* pfile;
 
 inline bool wordSearch(int wordIdx, vector<int> &wordPool) {
 	for (vector<int>::iterator it = wordPool.begin(); it != wordPool.end(); it++) {
@@ -38,6 +39,7 @@ size_t STPoint::getKeywordSize()
 float STPoint::STdistance(STPoint & p, float alpha)
 {
 	// return (this->Sdistance(p)*alpha);
+	// fprintf(pfile, "%f\n", this->Tdistance(p));
 	return (this->Sdistance(p)*alpha + this->Tdistance(p)*(1 - alpha));
 }
 
@@ -85,8 +87,10 @@ float STPoint::Tdistance(STPoint & p)
 		else
 			union_size++;
 	}
-	return (float)1.0 - (float)intersect_size / union_size;
-
+	if (union_size == 0)
+		return 0;
+	else // do not divide zero!
+		return (float)1.0 - (float)intersect_size / union_size;
 }
 
 

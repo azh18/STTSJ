@@ -85,11 +85,13 @@ float STTraj::HausdorffDistance(STTraj & traj, float alpha)
 		}
 	}
 	hausd1 = maxD;
+
 #ifdef DISPLAY_SPATIAL_TEXTUAL
 	float maxDSpatial1, maxDTextual1;
 	maxDSpatial1 = maxDSpatial;
 	maxDTextual1 = maxDTextual;
 #endif // DISPLAY_SPATIAL_TEXTUAL
+
 	// compute traj to this
 	maxD = 0; maxDSpatial = 0; maxDTextual = 0;
 	for (int i = 0; i < traj.points.size(); i++) {
@@ -123,14 +125,19 @@ float STTraj::HausdorffDistance(STTraj & traj, float alpha)
 	if (hausd1 > hausd2)
 	{
 #ifdef DISPLAY_SPATIAL_TEXTUAL
-		printf("Ds:%f,Dt:%f,D:%f.\t", maxDSpatial1, maxDTextual1, hausd1);
+		//printf("Ds:%f,Dt:%f,D:%f.\t", maxDSpatial1, maxDTextual1, hausd1);
+		if (this->trajID == 31 && traj.trajID == 52)
+			printf("Ds:%f,Dt:%f,D:%f.\t", maxDSpatial1, maxDTextual1, hausd1);
 #endif
+
 		return hausd1;
 	}
 	else
 	{
 #ifdef DISPLAY_SPATIAL_TEXTUAL
-		printf("Ds:%f,Dt:%f,D:%f.\t", maxDSpatial2, maxDTextual2, hausd2);
+		//printf("Ds:%f,Dt:%f,D:%f.\t", maxDSpatial2, maxDTextual2, hausd2);
+		if (this->trajID == 31 && traj.trajID == 52)
+			printf("Ds:%f,Dt:%f,D:%f.\t", maxDSpatial1, maxDTextual1, hausd1);
 #endif
 		return hausd2;
 	}

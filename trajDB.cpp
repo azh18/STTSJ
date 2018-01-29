@@ -76,7 +76,7 @@ size_t trajDB::loadTrajFromFile(string fileName)
 	return this->data.size();
 }
 
-int trajDB::cleanOutsideData()
+int trajDB::cleanOutsideData(int maxDataSize)
 {
 	ifstream fp("DeleteWordList.data", std::ios_base::in);
 	std::string buffer;
@@ -117,6 +117,10 @@ int trajDB::cleanOutsideData()
 	size_t id = 0;
 	for (emptyChecker = this->data.begin(); emptyChecker != this->data.end();emptyChecker++) {
 		emptyChecker->trajID = id++;
+	}
+	// leave only maxDataSize trajs
+	if (this->data.size() > maxDataSize) {
+		this->data.resize(maxDataSize);
 	}
 	return 0;
 }
@@ -266,12 +270,20 @@ int trajDB::getDatasetInformation()
 	textualLBType
 	0: use original Jaccard max
 	1: use lowerbound based on bloom filter
+
+	pi
+	the i value (idx) of point p in the trajectory
+
+	pTrajID
+	the trajID of point p
 */
 float trajDB::similarityGridProber(STPoint &p, set<size_t> &Pset, int probeIter, float alpha, float epsilon,
-	set<size_t>& candTrajs, set<size_t>& filteredTrajs,
+	set<size_t>& candTrajs, set<size_t>& filteredTrajs, // two sets of trajectories
 	vector<map<size_t, bool>> &probedTable, map<size_t, int> &probedTimeArray, int pi,
-	int textualLBType)
+	int textualLBType, size_t pTrajID)
 {
+	MyTimer time1;
+	//time1.start();
 	// get cellid of current point p
 	int cid_of_p = this->gridIndex.getCellIDFromCoordinate(p.lat, p.lon);
 	// find cells should be probed according to probeIter
@@ -282,17 +294,23 @@ float trajDB::similarityGridProber(STPoint &p, set<size_t> &Pset, int probeIter,
 		// 说明probe已经超出范围，不必再继续
 		return -1.0;
 	}
+	//time1.stop();
+	//printf("step 1 time:%f ms\n", time1.elapse());
+	//time1.start();
 	// get a set of trajs that overlap these cells
+	int processedTrajs = 0;
 	set<size_t> probedTrajs;
 	for (size_t i = 0; i < probedCellIds.size(); i++) {
 		vector<size_t> trajsInThisCell;
 		this->gridIndex.getTrajsOverlappedCell(probedCellIds[i], trajsInThisCell);
 		for (int j = 0; j < trajsInThisCell.size(); j++) {
+			processedTrajs++;
 			// only process tid that fall into given set
-			if (Pset.find(trajsInThisCell[j]) != Pset.end() && 
-				probedTable[pi][trajsInThisCell[j]] == false &&
-				candTrajs.find(trajsInThisCell[j]) == candTrajs.end() && 
-				filteredTrajs.find(trajsInThisCell[j]) == filteredTrajs.end())
+			if (probedTable[pi][trajsInThisCell[j]] == false && 
+				filteredTrajs.find(trajsInThisCell[j]) == filteredTrajs.end() &&
+				candTrajs.find(trajsInThisCell[j]) == candTrajs.end() &&
+				Pset.find(trajsInThisCell[j]) != Pset.end()
+				)
 			{
 				// then it need to be probed...
 				probedTrajs.insert(trajsInThisCell[j]);
@@ -300,6 +318,10 @@ float trajDB::similarityGridProber(STPoint &p, set<size_t> &Pset, int probeIter,
 			}
 		}
 	}
+	//time1.stop();
+	//printf("step 2, generate probed trajs time: %f ms, process %d trajs, add %zd trajs\n", 
+	//	time1.elapse(), processedTrajs, probedTrajs.size());
+	//time1.start();
 	// test
 	//printf("\nprobed tid:\n");
 	//for (set<size_t>::iterator it = probedTrajs.begin(); it != probedTrajs.end(); it++)
@@ -311,7 +333,7 @@ float trajDB::similarityGridProber(STPoint &p, set<size_t> &Pset, int probeIter,
 		size_t tid = *it;
 		// find dT(min)
 		float jaccardMax = 0;
-		if (textualLBType == 0) {
+		if (textualLBType == 0) { // set lower bound
 			for (size_t i = 0; i < this->data[tid].points.size(); i++) {
 				float tempJaccardMax = (float)(min(p.keywords.size(), this->data[tid].points[i].keywords.size())) /
 					max(p.keywords.size(), this->data[tid].points[i].keywords.size());
@@ -319,7 +341,7 @@ float trajDB::similarityGridProber(STPoint &p, set<size_t> &Pset, int probeIter,
 					jaccardMax = tempJaccardMax;
 			}
 		}
-		else if (textualLBType == 1) {
+		else if (textualLBType == 1) { // bloom filter lower bound
 			int maximalMatchNum = 0;
 			for (int i = 0; i < p.keywords.size(); i++) {
 				if (this->data[tid].bfWords.contains(p.keywords[i]))
@@ -328,7 +350,7 @@ float trajDB::similarityGridProber(STPoint &p, set<size_t> &Pset, int probeIter,
 			// find minimum union size
 			int minimalUnionSize = 0;
 			for (int i = 0; i < this->data[tid].points.size(); i++) {
-				minimalUnionSize = (int)this->data[tid].points[i].keywords.size() > minimalUnionSize ?
+				minimalUnionSize = (int)this->data[tid].points[i].keywords.size() < minimalUnionSize ?
 					(int)this->data[tid].points[i].keywords.size() : minimalUnionSize;
 			}
 			minimalUnionSize += (int)p.keywords.size() - maximalMatchNum;
@@ -347,6 +369,8 @@ float trajDB::similarityGridProber(STPoint &p, set<size_t> &Pset, int probeIter,
 		if (dMin > epsilon)
 		{
 			// printf("Traj %zd is filtered. spatial LB is:%f, textual LB is %f, overall LB is %f \n", tid,lowerboundSpatial, dTmin, dMin);
+			//if(pTrajID==127)
+			//	printf("Traj %zd is filtered. spatial LB is:%f, textual LB is %f, overall LB is %f \n", tid, lowerboundSpatial, dTmin, dMin);
 			filteredTrajs.insert(tid);
 		}
 		else {
@@ -355,7 +379,8 @@ float trajDB::similarityGridProber(STPoint &p, set<size_t> &Pset, int probeIter,
 		}
 
 	}
-
+	//time1.stop();
+	//printf("step 3, verify probed trajs time: %f ms\n", time1.elapse());
 	return lowerboundSpatial;
 }
 
@@ -363,6 +388,8 @@ float trajDB::similarityGridProber(STPoint &p, set<size_t> &Pset, int probeIter,
 // wait for unit test
 int trajDB::similarityGridFilter(STTraj & t, set<size_t>& Pset, float alpha, float epsilon, vector<size_t>& candTraj)
 {
+	MyTimer timer;
+	//timer.start();
 	// maintain a table to mark whether for point i, we have known mind(i,j)<epsilon
 	vector<map<size_t, bool>> oneConstrainSatisfiedTable(t.points.size());
 	for (size_t i = 0; i < t.points.size(); i++)
@@ -379,15 +406,22 @@ int trajDB::similarityGridFilter(STTraj & t, set<size_t>& Pset, float alpha, flo
 	set<size_t> candTrajSet, filteredTrajSet; // two sets of trajs which is candidate or filtered
 	float lowerBoundSpatial = 0;
 	int probeIter = 0;
+	//timer.stop();
+	//printf("process traj %d\n", t.trajID);
+	//printf("Filter stage 1 time usage:%f ms\n", timer.elapse());
+	//timer.start();
 	// start filter phase, until all trajs are distributed in cand and filter, or none of traj can be in cand
 	while (candTrajSet.size() + filteredTrajSet.size() < Pset.size() && lowerBoundSpatial <= epsilon / alpha) {
 		// calculate the lowerboundSpatial now
+		//MyTimer time1;
+		//time1.start();
 		lowerBoundSpatial = (float)9999.9;
 		for (size_t i = 0; i < t.points.size(); i++) {
 			// for this point, invoke probe to update candTraj and filteredTraj
 			float tempLB = this->similarityGridProber(t.points[i], Pset, probeIter,
 				alpha, epsilon, candTrajSet, filteredTrajSet,
-				oneConstrainSatisfiedTable, remainPointNeedToSatisfyArray, (int)i, 0); // need to be adapted
+				oneConstrainSatisfiedTable, remainPointNeedToSatisfyArray, (int)i, 1,
+				t.trajID); // need to be adapted
 			if (tempLB < 0) {
 				// 无效LB
 				continue;
@@ -396,13 +430,19 @@ int trajDB::similarityGridFilter(STTraj & t, set<size_t>& Pset, float alpha, flo
 				lowerBoundSpatial = (lowerBoundSpatial < tempLB ? lowerBoundSpatial : tempLB);
 			}
 		}
+		//time1.stop();
+		//printf("iter time consume:%f ms\n", time1.elapse());
+		//printf("One point verify end.\n");
 		//for (set<size_t>::iterator it = Pset.begin(); it != Pset.end(); it++) {
 		//	if (remainPointNeedToSatisfyArray[*it] == 0)
 		//		candTrajSet.insert(*it);
 		//}
 		probeIter++;
-		// printf("\n an iteration finish.\n");
+
 	}
+	//timer.stop();
+	//printf("Filter stage 2 time usage (while loop):%f ms\n", timer.elapse()/t.points.size());
+	//printf("\n %d iteration finish. #points in traj:%zd\n",probeIter,t.points.size());
 	// 结束后所有candTrajSet中的都是candidate，其他的都可以filter掉
 	//for (set<size_t>::iterator it = candTrajSet.begin(); it != candTrajSet.end(); it++) {
 	//	candTraj.push_back(*it);
@@ -431,12 +471,13 @@ MBR trajDB::getMBRofAllData(const MBR &mbr)
 	return mbr;
 }
 
-int trajDB::testAllFunctions()
+int trajDB::testAllFunctions(float alpha, float epsilon)
 {
 	// test similarityGridProber
+	set<size_t> Pset;
 	//set<size_t> candTrajs, filteredTrajs, Pset;
-	//for (size_t i = 0; i < 99; i++)
-	//	Pset.insert(i);
+	for (size_t i = 0; i < 128; i++)
+		Pset.insert(i);
 	//vector<map<size_t, bool>> oneConstrainSatisfiedTable(1);
 	//for (set<size_t>::iterator it = Pset.begin(); it != Pset.end(); it++) {
 	//	oneConstrainSatisfiedTable[0][*it] = false;
@@ -457,16 +498,48 @@ int trajDB::testAllFunctions()
 	//test similarity filter
 	// result: lower bound is too loose
 	set<size_t> Qset;
-	vector<size_t> candTrajSet;
-	for (size_t i = 0; i < 1280; i++)
+	
+	for (size_t i = 0; i < 128; i++)
 		Qset.insert(i);
+	vector<trajPair> filterResult; // result of filter phase
 	MyTimer timer;
 	timer.start();
-	for(size_t i=0;i<1280;i++)
-		this->similarityGridFilter(this->data[i], Qset, (float)0.5, (float)0.55, candTrajSet);
+	for (set<size_t>::iterator it = Pset.begin(); it != Pset.end(); it++) {
+		vector<size_t> candTrajSet;
+		//timer.start();
+		this->similarityGridFilter(this->data[*it], Qset, alpha, epsilon, candTrajSet);
+		//timer.stop();
+		//printf("Filter iter %zd spend %f ms.\n", i, timer.elapse());
+		//printf("finish a filter.\n");
+		for (vector<size_t>::iterator itCand = candTrajSet.begin(); itCand != candTrajSet.end(); itCand++) {
+			filterResult.push_back(trajPair(*it, *itCand));
+		}
+	}
 	timer.stop();
-	printf("Filter spend %f ms.\n", timer.elapse());
-	printf("Total:%zd,Filtered:%zd\n", Qset.size(), candTrajSet.size());
+	printf("Total filter time usage:%f ms\n", timer.elapse());
+	printf("Total:%zd, Remain:%zd, Filtered:%zd\n", Qset.size()*Pset.size(), filterResult.size(), Qset.size()*Pset.size()-filterResult.size());
+	map<trajPair, float> CPUExaustedResult;
+	test.defaultTest(epsilon, alpha, 128, 128, CPUExaustedResult);
+	vector<trajPair> ExaustedResult;
+	for (map<trajPair, float>::iterator it = CPUExaustedResult.begin(); it != CPUExaustedResult.end(); it++) {
+		if (it->second <= epsilon)
+			ExaustedResult.push_back(it->first);
+	}
+	printf("Valid Trajs pair number: %zd", ExaustedResult.size());
+
+	// compare whether exaustedResult is in filterResult
+	set<trajPair> filterResultSet, exaustedResultSet;
+	for (size_t i = 0; i < filterResult.size(); i++)
+		filterResultSet.insert(filterResult[i]);
+	for (size_t i = 0; i < ExaustedResult.size(); i++)
+		exaustedResultSet.insert(ExaustedResult[i]);
+	for (set<trajPair>::iterator it = exaustedResultSet.begin(); it != exaustedResultSet.end(); it++) {
+		if (filterResultSet.find(*it) == filterResultSet.end()) {
+			printf("An error: exaustedResult is not in candidate after filtering. d(%zd,%zd)=%f\n",
+				(*it).first, it->second, CPUExaustedResult[*it]);
+		}
+	}
+
 	//printf("Here are all candidate trajectories:");
 	//for (size_t i = 0; i < candTrajSet.size(); i++) {
 	//	printf("%zd,", candTrajSet[i]);

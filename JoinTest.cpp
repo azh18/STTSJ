@@ -28,9 +28,9 @@ int JoinTest::defaultTest(float epsilon, float alpha, int setSize1, int setSize2
 	timer.stop();
 	printf("Elapsed Time: %f ms\n", timer.elapse());
 	
-	for (map<trajPair, float>::iterator it = result.begin(); it != result.end(); it++) {
-		printf("Pair:(%zd, %zd) Distance: %f\t", it->first.first, it->first.second, it->second);
-	}
+	//for (map<trajPair, float>::iterator it = result.begin(); it != result.end(); it++) {
+	//	printf("Pair:(%zd, %zd) Distance: %f\t", it->first.first, it->first.second, it->second);
+	//}
 	
 	return 0;
 }
