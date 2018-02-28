@@ -35,6 +35,10 @@ int JoinTest::defaultTest(float epsilon, float alpha, int setSize1, int setSize2
 	return 0;
 }
 
+/*
+naive方法的join
+on CPU
+*/
 int JoinTest::joinExhaustedCPU(float epsilon, float alpha, vector<size_t> &join_set_1, vector<size_t> &join_set_2, map<trajPair, float>& result)
 {
 	// retrieve two sets of traj
@@ -52,6 +56,10 @@ int JoinTest::joinExhaustedCPU(float epsilon, float alpha, vector<size_t> &join_
 	return 0;
 }
 
+/*
+naive方法的join
+on GPU
+*/
 int JoinTest::joinExhaustedGPU(float epsilon, float alpha, vector<size_t>& join_set_1, vector<size_t>& join_set_2, map<trajPair, float>& result)
 {
 

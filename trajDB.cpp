@@ -2,6 +2,7 @@
 #include<fstream>
 #include<sstream>
 #include "gpuKernel.h"
+#include <unordered_set>
 #define min(x,y) x>y?y:x
 #define max(x,y) x>y?x:y
 
@@ -10,11 +11,13 @@ using std::ifstream;
 using std::istreambuf_iterator;
 using std::string;
 using std::ofstream;
+using std::unordered_set;
 
 trajDB::trajDB()
 {
 }
 
+// load word-ID pair from file
 size_t trajDB::loadDictFromFile(string fileName)
 {
 	ifstream inputStream(fileName, std::ios_base::in);
@@ -32,6 +35,7 @@ size_t trajDB::loadDictFromFile(string fileName)
 	return wordDict.size();
 }
 
+// load trajectory data from file
 size_t trajDB::loadTrajFromFile(string fileName)
 {
 	this->fileName = fileName;
@@ -75,6 +79,7 @@ size_t trajDB::loadTrajFromFile(string fileName)
 	}
 	return this->data.size();
 }
+
 
 int trajDB::cleanOutsideData(int maxDataSize)
 {
@@ -151,6 +156,10 @@ bool floatEqual(float a, float b) {
 	else
 		return false;
 }
+/*
+used for debug
+check whether result1 and result2 is the same
+*/
 bool compareResult(map<trajPair, float> &result1, map<trajPair, float>& result2,
 	vector<trajPair> &differentPair) {
 	bool isSame = true;
@@ -218,6 +227,9 @@ int trajDB::runDefaultTest(float epsilon, float alpha, int setSize1, int setSize
 	return 0;
 }
 
+/*
+get and output some feature of the imported dataset
+*/
 int trajDB::getDatasetInformation()
 {
 	int totalWordNum=0;
@@ -282,7 +294,7 @@ float trajDB::similarityGridProber(STPoint &p, set<size_t> &Pset, int probeIter,
 	vector<map<size_t, bool>> &probedTable, map<size_t, int> &probedTimeArray, int pi,
 	int textualLBType, size_t pTrajID)
 {
-	MyTimer time1;
+	//MyTimer time1;
 	//time1.start();
 	// get cellid of current point p
 	int cid_of_p = this->gridIndex.getCellIDFromCoordinate(p.lat, p.lon);
@@ -299,7 +311,7 @@ float trajDB::similarityGridProber(STPoint &p, set<size_t> &Pset, int probeIter,
 	//time1.start();
 	// get a set of trajs that overlap these cells
 	int processedTrajs = 0;
-	set<size_t> probedTrajs;
+	unordered_set<size_t> probedTrajs;
 	for (size_t i = 0; i < probedCellIds.size(); i++) {
 		vector<size_t> trajsInThisCell;
 		this->gridIndex.getTrajsOverlappedCell(probedCellIds[i], trajsInThisCell);
@@ -308,8 +320,8 @@ float trajDB::similarityGridProber(STPoint &p, set<size_t> &Pset, int probeIter,
 			// only process tid that fall into given set
 			if (probedTable[pi][trajsInThisCell[j]] == false && 
 				filteredTrajs.find(trajsInThisCell[j]) == filteredTrajs.end() &&
-				candTrajs.find(trajsInThisCell[j]) == candTrajs.end() &&
-				Pset.find(trajsInThisCell[j]) != Pset.end()
+				candTrajs.find(trajsInThisCell[j]) == candTrajs.end()
+				&& Pset.find(trajsInThisCell[j]) != Pset.end()
 				)
 			{
 				// then it need to be probed...
@@ -319,6 +331,8 @@ float trajDB::similarityGridProber(STPoint &p, set<size_t> &Pset, int probeIter,
 		}
 	}
 	//time1.stop();
+	//printf("step 2, probedCellIds size:%zd, filter,Cand,Pset Size:%zd,%zd,%zd\n",
+	//	probedCellIds.size(), candTrajs.size(), filteredTrajs.size(), Pset.size());
 	//printf("step 2, generate probed trajs time: %f ms, process %d trajs, add %zd trajs\n", 
 	//	time1.elapse(), processedTrajs, probedTrajs.size());
 	//time1.start();
@@ -329,7 +343,7 @@ float trajDB::similarityGridProber(STPoint &p, set<size_t> &Pset, int probeIter,
 	//printf("\n");
 	// test
 	// for each trajs, if not in two sets, check condition and insert it into sets
-	for (set<size_t>::iterator it = probedTrajs.begin(); it != probedTrajs.end(); it++) {
+	for (unordered_set<size_t>::iterator it = probedTrajs.begin(); it != probedTrajs.end(); it++) {
 		size_t tid = *it;
 		// find dT(min)
 		float jaccardMax = 0;

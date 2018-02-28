@@ -12,6 +12,8 @@
 
 
 #define CUDA_CALL(x) { const cudaError_t a = (x); if (a!= cudaSuccess) { printf("\nCUDA Error: %s(err_num=%d)\n", cudaGetErrorString(a), a); cudaDeviceReset(); assert(0);}}
+
+// a task refers to a hausdorff distance computation between a pair of trajectories
 // every task of GPU has a GPUHausInfoTable
 typedef struct GPUHausInfoTable {
 	uint32_t latlonIdxP, latlonIdxQ; // the first offset of latlon of the traj 
@@ -57,12 +59,14 @@ __global__ void addKernel(int *c, const int *a, const int *b)
 	c[i] = a[i] + b[i];
 }
 
+// Spatial distance computation
 __device__ inline float SDistance(float lat1, float lon1, float lat2, float lon2) {
 	float latdelta = lat1 - lat2;
 	float londelta = lon1 - lon2;
 	return sqrt(latdelta*latdelta + londelta*londelta)/ MAX_DIST;
 }
 
+// Textual distance computation (each thread handles a pair of points)
 __device__ inline float TDistance(int* word1, int* word2, uint32_t wordNum1, uint32_t wordNum2) {
 	int tempWords[MAX_KEYWORD_NUM]; uint32_t intersect_size = 0, union_size = 0;
 	for (uint32_t idxW = 0; idxW < wordNum1; idxW++) {
@@ -89,6 +93,8 @@ __device__ inline float TDistance(int* word1, int* word2, uint32_t wordNum1, uin
 		return 1.0 - (float)intersect_size / union_size;
 }
 
+// compute hausdorff distance
+// point level parallelism
 __global__ void computeHausdorffDistanceByGPUPointLevel(Latlon* latlonP, int* textP, uint32_t* textIdxPArray,
 	Latlon* latlonQ, int* textQ, uint32_t* textIdxQArray, int datasizeP, int datasizeQ, 
 	uint32_t *wordNumP, uint32_t *wordNumQ, GPUHausInfoTable* taskInfo, float alpha,
@@ -340,6 +346,10 @@ __global__ void computeTextualDistanceGPU(Latlon* latlonP, int* textP, uint32_t*
 	return;
 }
 
+/*
+	compute hausdoff distance after compute textual distance by GPU
+	should be executed after running the function "computeTextualDistanceGPU"
+*/
 __global__ void computeHausdorffDistanceByGPUKeywordLevel(Latlon* latlonP, int* textP, uint32_t* textIdxPArray,
 	Latlon* latlonQ, int* textQ, uint32_t* textIdxQArray, int datasizeP, int datasizeQ,
 	uint32_t *wordNumP, uint32_t *wordNumQ, GPUHausInfoTable* taskInfo, bool* matchResult, float alpha,
@@ -592,6 +602,11 @@ void* GPUMalloc(size_t byteNum) {
 }
 
 
+/*
+a helper function to be executed by codes outside this cuda source file
+initial host memory and device memory, and copy data to GPU
+then execute the kernel function
+*/
 
 int calculateDistanceGPU(vector<STTraj> &trajSetP,
 	vector<STTraj> &trajSetQ,

@@ -57,6 +57,7 @@ int STTraj::unitTestForDist() {
 	return 0;
 }
 
+// compute hausdorff distance between this trajectory and the trajectory indicated in the parameter
 float STTraj::HausdorffDistance(STTraj & traj, float alpha)
 {
 	float hausd1, hausd2;
@@ -143,6 +144,7 @@ float STTraj::HausdorffDistance(STTraj & traj, float alpha)
 	}
 }
 
+// generate bloom filter for the words of this trajectory
 int STTraj::generateBloomFilter(float errorTole)
 {
 	// compute keyword num

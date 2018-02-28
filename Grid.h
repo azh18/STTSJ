@@ -3,9 +3,11 @@
 #include "STPoint.h"
 #include "STTraj.h"
 #include "Cell.h"
+#include <string>
 
 
 using std::vector;
+using std::string;
 
 class Grid
 {
@@ -26,6 +28,9 @@ public:
 	float getSurroundCellID(const STPoint &p, int probeIter, int cellid, vector<int> &cells);
 	int getTrajsOverlappedCell(int cellid, vector<size_t> &trajs);
 
+
+	//debug
+	int outputCellTrajList(string trajListFileName);
 
 	~Grid();
 };

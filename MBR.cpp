@@ -14,6 +14,9 @@ MBR::MBR(float lat1, float lat2, float lon1, float lon2)
 	this->lon2 = lon2;
 }
 
+/*
+test whether two MBRs are overlapped
+*/
 int MBR::isOverlap(MBR mbr2)
 {
 	int overlap;
@@ -30,6 +33,9 @@ int MBR::isOverlap(MBR mbr2)
 	return overlap;
 }
 
+/*
+test whether a point is included in the MBR
+*/
 int MBR::containPoint(STPoint & p)
 {
 	if ((p.lat < this->lat2) && (p.lat > this->lat1) && (p.lon < this->lon2) && (p.lon > this->lon1))

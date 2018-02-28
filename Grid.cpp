@@ -1,6 +1,9 @@
 #include "Grid.h"
+#include <set>
 #define min(x,y) x>y?y:x
 #define max(x,y) x>y?x:y
+
+using std::set;
 
 Grid::Grid()
 {
@@ -40,6 +43,9 @@ int Grid::testAllMethods()
 	return 0;
 }
 
+/*
+初始化grid索引
+*/
 int Grid::initial(const MBR & overallBound, float resl_lat, float resl_lon)
 {
 	this->allSpaceBound = overallBound;
@@ -62,7 +68,9 @@ int Grid::initial(const MBR & overallBound, float resl_lat, float resl_lon)
 	return 0;
 }
 
-
+/*
+将连续存储的轨迹数据导入grid中
+*/
 int Grid::addTrajIntoGrid(const STTraj & traj)
 {
 	for (size_t i = 0; i < traj.points.size(); i++) {
@@ -73,6 +81,9 @@ int Grid::addTrajIntoGrid(const STTraj & traj)
 	return 0;
 }
 
+/*
+在row-major coding下，给出坐标经纬度，确定其位于的cell的id
+*/
 // test pass
 int Grid::getCellIDFromCoordinate(float lat, float lon)
 {
@@ -192,6 +203,9 @@ float Grid::getSurroundCellID(const STPoint &p, int probeIter, int cellid, vecto
 
 }
 
+/*
+查找与某个cell所相交的轨迹的编号，放进trajs中
+*/
 int Grid::getTrajsOverlappedCell(int cellid, vector<size_t>& trajs)
 {
 	for (set<size_t>::iterator it = this->cells[cellid].trajList.begin();
@@ -201,6 +215,22 @@ int Grid::getTrajsOverlappedCell(int cellid, vector<size_t>& trajs)
 	return 0;
 }
 
+/*
+debug用：输出所有cell所被交叉的轨迹到文件中
+*/
+int Grid::outputCellTrajList(string trajListFileName)
+{
+	FILE* p = fopen(trajListFileName.c_str(), "w+");
+	fprintf(p, "%d,%d\n", this->gridLatScale, this->gridLonScale);
+	for (int i = 0; i < this->cells.size(); i++) {
+		fprintf(p, "%d:", i); // the i-th cell
+		for (set<size_t>::iterator it = this->cells[i].trajList.begin(); it != this->cells[i].trajList.end(); it++) {
+			fprintf(p, "%d,", *it);
+		}
+		fprintf(p, "\n");
+	}
+	return 0;
+}
 
 Grid::~Grid()
 {
